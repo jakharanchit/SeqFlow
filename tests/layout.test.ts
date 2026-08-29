@@ -14,7 +14,9 @@ import { parse } from '../src/core/parse';
 import { toFlow } from '../src/emit/flow';
 import {
   applyLayout,
+  fitZoom,
   fromElk,
+  graphBounds,
   nodesForMode,
   toElk,
   type ElkLike,
@@ -149,5 +151,42 @@ describe('compact layout mode', () => {
     const flat = nodesForMode(flow.nodes, 'compact');
     const req = toElk(flat, flow.edges, 'compact');
     expect(req.edges).toHaveLength(126);
+  });
+});
+
+describe('fit geometry', () => {
+  it('measures the graph extent through parent-relative positions', () => {
+    const box = graphBounds(placed)!;
+    expect(box).not.toBeNull();
+    // Matches the top-level extent the canvas has to frame.
+    let width = 0;
+    let height = 0;
+    for (const n of placed) {
+      if (n.parentId !== undefined) continue;
+      width = Math.max(width, n.position.x + n.width);
+      height = Math.max(height, n.position.y + n.height);
+    }
+    expect(box.x + box.width).toBeCloseTo(width, 0);
+    expect(box.y + box.height).toBeCloseTo(height, 0);
+    expect(box.height).toBeGreaterThan(6000);
+  });
+
+  it('returns null for an empty graph rather than an infinite box', () => {
+    expect(graphBounds([])).toBeNull();
+  });
+
+  it('fits the extent into a viewport, clamped to the zoom limits', () => {
+    const box = { x: 0, y: 0, width: 1000, height: 500 };
+    // Height-bound: 500 * 1.12 = 560 into 280 is 0.5; width gives 0.8928.
+    expect(fitZoom(box, 1000, 280, 0.06, 0.02, 2.5)).toBeCloseTo(0.5, 3);
+    // A tiny graph is capped rather than blown up past the canvas maximum.
+    expect(fitZoom({ x: 0, y: 0, width: 10, height: 10 }, 1000, 1000, 0.06, 0.02, 2.5)).toBe(2.5);
+    // A huge one bottoms out at the minimum.
+    expect(fitZoom({ x: 0, y: 0, width: 1e6, height: 1e6 }, 100, 100, 0.06, 0.02, 2.5)).toBe(0.02);
+  });
+
+  it('survives a broken parent chain instead of looping', () => {
+    const orphan = placed.map((n) => (n.id === placed[1]!.id ? { ...n, parentId: n.id } : n));
+    expect(graphBounds(orphan)).not.toBeNull();
   });
 });

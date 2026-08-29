@@ -37,6 +37,11 @@ export interface FlowNodeData extends Record<string, unknown> {
   depth: number;
   /** True where inbound convergence exceeds the rule-file threshold. */
   convergent: boolean;
+  /**
+   * Steps hidden inside this node, when it is a collapsed sequence. Absent on
+   * an ordinary step and on an expanded group.
+   */
+  collapsed?: number;
 }
 
 export interface FlowNode {
@@ -52,6 +57,10 @@ export interface FlowNode {
   zIndex: number;
   selectable: boolean;
   draggable: boolean;
+  /** Driven from app state, so outline and canvas agree on the selection. */
+  selected?: boolean;
+  /** Highlight/dim classes. Applied by the UI, never by the emitter. */
+  className?: string;
 }
 
 export interface FlowEdgeData extends Record<string, unknown> {
@@ -68,6 +77,9 @@ export interface FlowEdge {
   data: FlowEdgeData;
   style: { stroke: string; strokeWidth: number; strokeDasharray?: string };
   zIndex: number;
+  /** Highlight/dim classes. Applied by the UI, never by the emitter. */
+  className?: string;
+  animated?: boolean;
 }
 
 /** Edge colour by reason. Kept here so the emitter owns the whole visual map. */
@@ -126,13 +138,30 @@ export interface FlowGraph {
   convergent: Set<string>;
 }
 
-export function toFlow(graph: Graph, rules: Rules): FlowGraph {
+export interface FlowOptions {
+  /**
+   * Collapsed sequence uid -> steps hidden inside it. A collapsed sequence
+   * draws as one opaque node rather than as a box around nothing.
+   */
+  collapsedCounts?: ReadonlyMap<string, number>;
+}
+
+export function toFlow(graph: Graph, rules: Rules, opts: FlowOptions = {}): FlowGraph {
   const convergent = convergentNodes(graph, rules);
+  const collapsedCounts = opts.collapsedCounts;
 
   const nodes: FlowNode[] = [];
   for (const node of graph.nodes.values()) {
-    const isGroup = node.kind === 'container';
-    const params = isGroup ? '' : paramText(node, rules);
+    // A group is a container that still has its children on the canvas. A
+    // collapsed one has none, so it is drawn as a node — see collapse.ts.
+    const isGroup = graph.containers.has(node.uid);
+    const hidden = collapsedCounts?.get(node.uid);
+    const params =
+      hidden === undefined
+        ? isGroup
+          ? ''
+          : paramText(node, rules)
+        : `${hidden} step${hidden === 1 ? '' : 's'}`;
     const height = node.kind === 'decision' ? SIZE.decisionHeight : SIZE.height;
 
     nodes.push({
@@ -148,6 +177,7 @@ export function toFlow(graph: Graph, rules: Rules): FlowGraph {
         uid: node.uid,
         depth: node.depth,
         convergent: convergent.has(node.uid),
+        ...(hidden === undefined ? {} : { collapsed: hidden }),
       },
       // Groups are resized by the layout pass; these are placeholders.
       width: isGroup ? SIZE.minWidth : measure(node.name, params),

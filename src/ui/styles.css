@@ -141,14 +141,16 @@ button.tool:disabled {
   min-height: 0;
 }
 
+/* The canvas is the point of the app; the side panes give way to it. */
 .canvas-wrap {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: 280px;
   position: relative;
 }
 
 .inspector {
-  flex: 0 0 340px;
+  flex: 0 1 340px;
+  min-width: 210px;
   border-left: 1px solid var(--line);
   background: var(--bg-panel);
   overflow-y: auto;
@@ -532,4 +534,746 @@ pre.xml {
 
 .react-flow__attribution {
   display: none;
+}
+
+/* ---------------------------------------------------------------- outline */
+
+.outline {
+  flex: 0 1 262px;
+  min-width: 158px;
+  border-right: 1px solid var(--line);
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.outline > .hint {
+  padding: 14px;
+}
+
+.outline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 10.5px;
+  font-weight: 620;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  flex: 0 0 auto;
+}
+
+.outline-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.outline-actions button {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 9.5px;
+  letter-spacing: 0.03em;
+  text-transform: none;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.outline-actions button:hover {
+  border-color: #3a4352;
+  color: var(--text);
+}
+
+.outline-rows {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0 12px;
+}
+
+.outline .row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding-right: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+  border-left: 2px solid transparent;
+}
+
+.outline .row:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.outline .row.selected {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+  color: var(--text);
+}
+
+.outline .row.is-container > .row-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.outline .row.dimmed {
+  opacity: 0.32;
+}
+
+.outline .twisty {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  line-height: 12px;
+  text-align: center;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--text-faint);
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.outline .twisty:hover {
+  color: var(--accent);
+}
+
+.outline .dot {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  margin: 0 5px 0 4px;
+  border-radius: 50%;
+  background: var(--action);
+}
+
+.outline .dot.kind-decision {
+  background: var(--decision);
+}
+.outline .dot.kind-criteria {
+  background: var(--criteria);
+}
+.outline .dot.kind-jump {
+  background: var(--jump);
+}
+
+.outline .row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.outline .row-count {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--text-faint);
+}
+
+/* -------------------------------------------------------- collapsed node */
+
+.rf-node.collapsed {
+  border-radius: 8px;
+  border: 1.5px dashed var(--text-faint);
+  border-left: 3px solid var(--text-dim);
+  background: #1b212b;
+}
+
+.rf-node.collapsed .label {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 11px;
+}
+
+.rf-node.collapsed .params {
+  color: var(--text-dim);
+}
+
+/* ---------------------------------------------------------------- search */
+
+.outline-search {
+  flex: 0 0 auto;
+  padding: 8px 8px 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.search-line {
+  position: relative;
+  display: flex;
+}
+
+.outline-search input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 24px 5px 8px;
+}
+
+.outline-search input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.outline-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search-line .clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: 0;
+  color: var(--text-faint);
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.search-line .clear:hover {
+  color: var(--text);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 6px;
+  max-height: 84px;
+  overflow-y: auto;
+}
+
+.filter-chip {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 9.5px;
+  padding: 1px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.filter-chip:hover {
+  border-color: #3a4352;
+  color: var(--text-dim);
+}
+
+.filter-chip.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.filter-chip b {
+  margin-left: 5px;
+  font-weight: 600;
+  opacity: 0.65;
+  font-family: var(--mono);
+}
+
+.result-count {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.outline .result {
+  padding: 5px 10px 6px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+
+.outline .result:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.outline .result.selected {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+
+.result-name {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.result-name mark {
+  background: rgba(90, 162, 232, 0.32);
+  color: inherit;
+  border-radius: 2px;
+}
+
+/* The path is the point of a result row: five nodes share the name above it. */
+.result-path {
+  margin-left: 14px;
+  font-size: 10px;
+  color: var(--text-faint);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+/* ------------------------------------------------- dimming and highlight */
+
+.react-flow__node.dimmed {
+  opacity: 0.16;
+}
+
+.react-flow__edge.dimmed {
+  opacity: 0.09;
+}
+
+.react-flow__node.on-path .rf-node {
+  border-color: var(--accent);
+}
+
+.react-flow__node.on-path .rf-node.shape-diamond,
+.react-flow__node.on-path .rf-node.shape-hexagon {
+  outline-color: var(--accent);
+}
+
+.react-flow__edge.on-path .react-flow__edge-path {
+  stroke-width: 2.4;
+}
+
+button.tool.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ---------------------------------------------------------------- drawer */
+
+.drawer {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--line);
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.drawer.open {
+  height: min(216px, 38vh);
+}
+
+.drawer-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  height: 29px;
+  flex: 0 0 auto;
+  border-bottom: 1px solid transparent;
+}
+
+.drawer.open .drawer-tabs {
+  border-bottom-color: var(--line);
+}
+
+.drawer-tabs .spacer {
+  flex: 1;
+}
+
+.drawer-tabs button {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 6px 9px 5px;
+  cursor: pointer;
+}
+
+.drawer-tabs button:hover {
+  color: var(--text-dim);
+}
+
+.drawer-tabs button.on {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.drawer-tabs button b {
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-weight: 600;
+  opacity: 0.6;
+}
+
+.drawer-tabs button.has-warnings b {
+  color: var(--warn);
+  opacity: 1;
+}
+
+.drawer-tabs .clear-signal,
+.drawer-tabs .collapse {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+
+.drawer-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.drawer-list {
+  flex: 0 0 340px;
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+  padding: 4px 0 8px;
+}
+
+.drawer-list.wide {
+  flex: 1;
+  border-right: 0;
+}
+
+.drawer-list > .hint,
+.drawer-detail > .hint {
+  padding: 10px 12px;
+}
+
+.signal-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 12px;
+  cursor: pointer;
+  font-size: 11.5px;
+  border-left: 2px solid transparent;
+}
+
+.signal-row:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.signal-row.selected {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+
+.signal-name {
+  font-family: var(--mono);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.signal-attrs {
+  flex: 1;
+  font-size: 9.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.signal-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.drawer-detail {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0 8px;
+  min-width: 0;
+}
+
+.detail-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 12px;
+  cursor: pointer;
+  font-size: 11.5px;
+}
+
+.detail-row:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.detail-name {
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.detail-path {
+  flex: 1;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.warn-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 11.5px;
+  cursor: pointer;
+  color: var(--text-dim);
+}
+
+.warn-row:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.warn-code {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--warn);
+  white-space: nowrap;
+}
+
+.warn-message {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ------------------------------------------------------- semantic zoom */
+
+/*
+ * Absolute rather than `height: 100%`: as a plain block child this box has no
+ * definite height at mount, React Flow measures zero, and the initial fit-view
+ * never fires. `.canvas-wrap` is the positioned ancestor.
+ */
+.canvas {
+  position: absolute;
+  inset: 0;
+  --zoom: 1;
+}
+
+/*
+ * Below a quarter scale a step label renders under 3 px and reads as noise.
+ * Drop it and keep the structure: sequence titles only, sized inversely with
+ * the zoom so they stay legible on screen at any fit. No layout is recomputed;
+ * this is purely what gets painted.
+ */
+.canvas.far .rf-node .label,
+.canvas.far .rf-node .params,
+.canvas.far .react-flow__edge-text,
+.canvas.far .react-flow__edge-textbg {
+  display: none;
+}
+
+.canvas.far .rf-node.collapsed .label {
+  display: block;
+  font-size: clamp(11px, calc(8px / var(--zoom)), 60px);
+  line-height: 1.15;
+  letter-spacing: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/*
+ * Only the outermost two levels keep their titles. Fully expanded, this file
+ * fits at about 0.09 scale, and 26 nested titles at that size are a smudge —
+ * the outer ones are what tell you where you are. Collapse a few sequences and
+ * the whole thing comes back above the threshold anyway.
+ */
+.canvas.far .rf-group[data-depth]:not([data-depth='1']):not([data-depth='2']) .title {
+  display: none;
+}
+
+.canvas.far .rf-group .title {
+  font-size: clamp(11px, calc(9px / var(--zoom)), 130px);
+  top: calc(3px / var(--zoom));
+  left: calc(6px / var(--zoom));
+  /* Constrained, or a title enlarged 10x spills out of its own box. */
+  right: calc(6px / var(--zoom));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+  color: var(--text-dim);
+}
+
+/* The shapes still have to read as shapes when the text is gone. */
+.canvas.far .rf-node {
+  border-width: calc(1.5px / var(--zoom));
+}
+
+.canvas.far .rf-group {
+  border-width: calc(1px / var(--zoom));
+}
+
+/* ------------------------------------------------------------ diff table */
+
+table.diff {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+table.diff th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-panel);
+  text-align: left;
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-weight: 620;
+  padding: 5px 10px 4px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+table.diff td {
+  padding: 3px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: top;
+}
+
+table.diff tbody tr {
+  cursor: pointer;
+}
+
+table.diff tbody tr:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.diff-step {
+  color: var(--text);
+  white-space: nowrap;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.diff-attr {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.diff-value {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------ filter fold */
+
+.filters-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  margin-top: 5px;
+  padding: 3px 2px;
+  background: none;
+  border: 0;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.filters-toggle:hover {
+  color: var(--text-dim);
+}
+
+.filters-toggle .twisty-inline {
+  font-size: 8px;
+  width: 8px;
+}
+
+.filters-toggle b {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--accent);
+}
+
+/* ------------------------------------------------------------ scrollbars */
+
+/*
+ * Thin, unpainted until the pointer is near. A tool with five scrolling panes
+ * should not look like it has five scrollbars.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background-clip: content-box;
+}
+
+:hover::-webkit-scrollbar-thumb {
+  background-color: #333c4a;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #475263;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--text-faint);
+  background-clip: content-box;
 }

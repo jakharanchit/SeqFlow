@@ -119,6 +119,30 @@ export function Inspector({
           </table>
         </div>
         <div className="section">
+          <h3>Canvas</h3>
+          <table className="attrs">
+            <tbody>
+              <tr>
+                <td className="k">scroll</td>
+                <td className="v">pan up and down</td>
+              </tr>
+              <tr>
+                <td className="k">+ / −</td>
+                <td className="v">zoom in / out</td>
+              </tr>
+              <tr>
+                <td className="k">0 / 1</td>
+                <td className="v">fit to view / 100%</td>
+              </tr>
+              <tr>
+                <td className="k">double-click</td>
+                <td className="v">collapse or expand a sequence</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div className="section">
           <h3>Edges</h3>
           <div className="legend">
             <span>

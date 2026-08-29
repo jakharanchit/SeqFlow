@@ -196,3 +196,65 @@ export function applyLayout(
     };
   });
 }
+
+export interface Bounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The extent of a laid-out graph, in absolute coordinates.
+ *
+ * A node inside a group carries a parent-relative position, so this walks up
+ * the parent chain to place it. Cycle-guarded; a malformed parent chain must
+ * not hang the canvas.
+ */
+export function graphBounds(nodes: readonly FlowNode[]): Bounds | null {
+  if (nodes.length === 0) return null;
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const node of nodes) {
+    let x = 0;
+    let y = 0;
+    let cursor: FlowNode | undefined = node;
+    const seen = new Set<string>();
+    while (cursor !== undefined && !seen.has(cursor.id)) {
+      seen.add(cursor.id);
+      x += cursor.position.x;
+      y += cursor.position.y;
+      cursor = cursor.parentId === undefined ? undefined : byId.get(cursor.parentId);
+    }
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + node.width);
+    maxY = Math.max(maxY, y + node.height);
+  }
+
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+/**
+ * The zoom that fits `box` into a viewport of `width` x `height`, with a
+ * fractional margin, clamped to the canvas zoom limits.
+ */
+export function fitZoom(
+  box: Bounds,
+  width: number,
+  height: number,
+  padding: number,
+  minZoom: number,
+  maxZoom: number,
+): number {
+  const w = box.width * (1 + padding * 2);
+  const h = box.height * (1 + padding * 2);
+  if (w <= 0 || h <= 0 || width <= 0 || height <= 0) return 1;
+  return Math.min(maxZoom, Math.max(minZoom, Math.min(width / w, height / h)));
+}
