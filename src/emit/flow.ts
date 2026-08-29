@@ -1,0 +1,187 @@
+/**
+ * Graph -> React Flow nodes and edges.
+ *
+ * A pure function with no React import, so it is unit-testable in Node. The
+ * shapes here are structurally what @xyflow/react expects; Canvas.tsx feeds
+ * them straight in.
+ *
+ * Containers become React Flow group nodes, giving ELK a hierarchy to lay out
+ * and the reader a visible boundary around each sequence. Flow edges only ever
+ * run between leaves — see the Graph contract.
+ */
+
+import type { Graph, NodeKind, NodeShape, Rules, SeqNode } from '../core/types';
+
+/** Node box sizes, in px. ELK needs a size before it can place anything. */
+export const SIZE = {
+  charWidth: 7.2,
+  paddingX: 34,
+  minWidth: 150,
+  maxWidth: 300,
+  height: 52,
+  /** Diamonds carry their text badly; give them room. */
+  decisionHeight: 74,
+  /** Space reserved inside a group for its title bar. */
+  groupHeader: 30,
+  groupPadding: 22,
+} as const;
+
+export interface FlowNodeData extends Record<string, unknown> {
+  label: string;
+  /** Rule-file selected attributes, e.g. "power_supply_enable_output = TRUE". */
+  params: string;
+  element: string;
+  kind: NodeKind;
+  shape: NodeShape;
+  uid: string;
+  depth: number;
+  /** True where inbound convergence exceeds the rule-file threshold. */
+  convergent: boolean;
+}
+
+export interface FlowNode {
+  id: string;
+  type: 'seqNode' | 'seqGroup';
+  position: { x: number; y: number };
+  data: FlowNodeData;
+  width: number;
+  height: number;
+  parentId?: string;
+  extent?: 'parent';
+  /** Groups sit behind their children and must not intercept clicks. */
+  zIndex: number;
+  selectable: boolean;
+  draggable: boolean;
+}
+
+export interface FlowEdgeData extends Record<string, unknown> {
+  reason: string;
+  convergent: boolean;
+}
+
+export interface FlowEdge {
+  id: string;
+  source: string;
+  target: string;
+  type: 'smoothstep';
+  label?: string;
+  data: FlowEdgeData;
+  style: { stroke: string; strokeWidth: number; strokeDasharray?: string };
+  zIndex: number;
+}
+
+/** Edge colour by reason. Kept here so the emitter owns the whole visual map. */
+export const EDGE_COLOR: Record<string, string> = {
+  fallthrough: '#8a94a6',
+  criteria: '#d4544a',
+  branch: '#3b82c4',
+  goto: '#9a6bd0',
+};
+
+function measure(label: string, params: string): number {
+  const widest = Math.max(label.length, params.length * 0.9);
+  const w = widest * SIZE.charWidth + SIZE.paddingX;
+  return Math.round(Math.min(SIZE.maxWidth, Math.max(SIZE.minWidth, w)));
+}
+
+/**
+ * The attributes the rule file marks worth showing on the label. Empty values
+ * are dropped — the sample file is full of `sensorTag=""`.
+ */
+export function paramText(node: SeqNode, rules: Rules): string {
+  const keys = rules.labels[node.element];
+  if (keys === undefined) return '';
+  const parts: string[] = [];
+  for (const key of keys) {
+    const value = node.attrs[key];
+    if (value === undefined || value === '') continue;
+    parts.push(`${key} = ${value}`);
+  }
+  return parts.join('  ·  ');
+}
+
+/** Inbound edge count per node. */
+export function inboundCounts(graph: Graph): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const e of graph.edges) counts.set(e.dst, (counts.get(e.dst) ?? 0) + 1);
+  return counts;
+}
+
+/**
+ * Nodes that more than `convergence_threshold` edges converge on. Spec 4.5:
+ * drawn normally, the 16 abort edges dominate the layout, so their inbound
+ * edges are styled dotted and de-emphasised.
+ */
+export function convergentNodes(graph: Graph, rules: Rules): Set<string> {
+  const out = new Set<string>();
+  for (const [uid, count] of inboundCounts(graph)) {
+    if (count > rules.convergenceThreshold) out.add(uid);
+  }
+  return out;
+}
+
+export interface FlowGraph {
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+  convergent: Set<string>;
+}
+
+export function toFlow(graph: Graph, rules: Rules): FlowGraph {
+  const convergent = convergentNodes(graph, rules);
+
+  const nodes: FlowNode[] = [];
+  for (const node of graph.nodes.values()) {
+    const isGroup = node.kind === 'container';
+    const params = isGroup ? '' : paramText(node, rules);
+    const height = node.kind === 'decision' ? SIZE.decisionHeight : SIZE.height;
+
+    nodes.push({
+      id: node.uid,
+      type: isGroup ? 'seqGroup' : 'seqNode',
+      position: { x: 0, y: 0 }, // ELK fills these in
+      data: {
+        label: node.name === '' ? node.element : node.name,
+        params,
+        element: node.element,
+        kind: node.kind,
+        shape: node.shape,
+        uid: node.uid,
+        depth: node.depth,
+        convergent: convergent.has(node.uid),
+      },
+      // Groups are resized by the layout pass; these are placeholders.
+      width: isGroup ? SIZE.minWidth : measure(node.name, params),
+      height: isGroup ? SIZE.height : height,
+      ...(node.parent === null ? {} : { parentId: node.parent, extent: 'parent' as const }),
+      zIndex: isGroup ? -node.depth : 1,
+      selectable: true,
+      draggable: !isGroup,
+    });
+  }
+
+  // React Flow requires a parent to be listed before its children.
+  nodes.sort((a, b) => a.data.depth - b.data.depth);
+
+  const edges: FlowEdge[] = graph.edges.map((e, i) => {
+    const isConvergent = convergent.has(e.dst);
+    const dotted = e.style === 'dotted' || isConvergent;
+    const color = EDGE_COLOR[e.reason] ?? EDGE_COLOR['fallthrough']!;
+    return {
+      // Names collide and a pair can be joined twice; the index keeps ids unique.
+      id: `e${i}-${e.src}-${e.dst}`,
+      source: e.src,
+      target: e.dst,
+      type: 'smoothstep' as const,
+      ...(e.label === undefined ? {} : { label: e.label }),
+      data: { reason: e.reason, convergent: isConvergent },
+      style: {
+        stroke: color,
+        strokeWidth: dotted ? 1.2 : 1.7,
+        ...(dotted ? { strokeDasharray: '5 4' } : {}),
+      },
+      zIndex: 2,
+    };
+  });
+
+  return { nodes, edges, convergent };
+}

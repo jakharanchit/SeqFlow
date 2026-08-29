@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<TestSequence>
+
+  <Variables/>
+
+  <Parameters>
+    <Parameter defaultValue="0" description="Future Text Entry Item" name="Serial Number" rangeHigh="10" rangeLow="0" type="Integer" uid="4D123266-E239-49DD-BAF2-8ED8692B45A1"/>
+    <Parameter defaultValue="47.5" description="DCIR Voltage Required to Start Test" name="Test Start Voltage" rangeHigh="50" rangeLow="47" type="Integer" uid="E3297B32-BB31-44BC-BD60-BEABAC3DA39D"/>
+  </Parameters>
+
+  <Timers/>
+
+  <StatisticsCalculators/>
+
+  <SubSequences/>
+
+  <Sequence description="" logCompletion="TRUE" logStart="TRUE" name="HLB Battery ESR" timeoutSeconds="0" uid="C00290E2-AA13-4407-9359-2B66CCD5C5E2">
+    <Sequence description="" logCompletion="TRUE" logStart="FALSE" name="Initialize" timeoutSeconds="0" uid="E71DB20A-820C-4690-9DBF-5B95AA70FC8F">
+      <SetStatus logCompletion="TRUE" logStart="FALSE" name="Set Status" status="Initializing" tag="test_status" timeoutSeconds="0" uid="61DE1D62-F24C-4E8C-AC92-6FA822D91191"/>
+      <StartLogging fileNameSuffix="" logCompletion="TRUE" logStart="FALSE" name="Start Recording" timeoutSeconds="0" uid="AC53B319-C4CE-4703-80C4-242B77D4F030"/>
+      <StartPeriodicLog duration_s="0" interval_s="1" logCompletion="TRUE" logStart="FALSE" loggedGroupName="ESR Signals" name="Start Periodic Log" numSamples="0" templateGroupName="ESR Signals" timeoutSeconds="0" uid="D7BFBDF9-49C9-4BF4-8122-CA193D91A549" waitForCompletion="FALSE">
+        <DynamicName>
+          <Text text="ESR Signals"/>
+        </DynamicName>
+      </StartPeriodicLog>
+    </Sequence>
+    <Sequence description="" logCompletion="TRUE" logStart="TRUE" name="Main" timeoutSeconds="0" uid="0CD4244E-6D4D-44D9-A92A-73E95D1A406B">
+      <Sequence description="" logCompletion="TRUE" logStart="TRUE" name="Pulse 1 - 6C" timeoutSeconds="0" uid="9742BDB5-6423-4D86-BB50-0CDE0295A06D">
+        <ConditionStep checkPeriod="0" falseAction="Go To Step" falseStep="A86510BB-DE6B-49F7-B225-4A470A29695E" logCompletion="TRUE" logStart="FALSE" name="Check Start Voltage" outputToVariable="FALSE" outputVariable="" timeoutSeconds="0" trueAction="Go To Step" trueStep="56833FAF-1A24-4171-8BAB-667090DE5920" uid="BF6ACE93-C1B0-4895-92BA-1272506D7726">
+          <Comparison compare="Sensor" compareWithValueSource="Value" comparison="GTOET" name="Above Minimum Start Voltage" outputToVariable="FALSE" outputVariable="" sensorTag="PackVoltage" uid="0C345D89-2965-4806-972B-BD6E18D70870" value="53.2" variableTag="" version="1"/>
+        </ConditionStep>
+        <Sequence description="" logCompletion="TRUE" logStart="FALSE" name="Charge to Desired Voltage" timeoutSeconds="0" uid="A86510BB-DE6B-49F7-B225-4A470A29695E">
+          <SetStatus logCompletion="TRUE" logStart="FALSE" name="Charging Status Message" status="Charging" tag="test_status" timeoutSeconds="0" uid="2173B2CC-667B-44A8-8D88-9AAB4BFE11AB"/>
+          <Sequence description="" logCompletion="TRUE" logStart="FALSE" name="Set Power Supply to Charge" timeoutSeconds="0" uid="A78430E0-02EB-448C-97DA-1D8B04D881AB">
+            <SetSetpoint logCompletion="TRUE" logStart="FALSE" name="Set Setpoint" sensorTag="" setpoint="8.8" setpointTag="power_supply_current_limit" timeoutSeconds="0" uid="888B7E7A-C014-4FC9-9F63-C3E8383ABD29" valueSource="Value" variableTag=""/>
+            <SetSetpoint logCompletion="TRUE" logStart="FALSE" name="Set Voltage" sensorTag="" setpoint="53.2" setpointTag="power_supply_voltage_setpoint" timeoutSeconds="0" uid="445189B0-611D-4311-A73B-CCAD43378FD3" valueSource="Value" variableTag=""/>
+            <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn Power Supply On" sensorTag="" state="TRUE" switchTag="power_supply_enable_output" timeoutSeconds="0" uid="34BE312B-056B-44D3-8AD3-3E433E934358" valueSource="Value" variableTag=""/>
+          </Sequence>
+          <WaitStep elapsedTimeVariable="" logCompletion="TRUE" logStart="FALSE" name="Wait for charging to begin" remainingTimeVariable="" stepTag="" time="10.000000" timeValueSource="Constant" timeoutSeconds="0" uid="3E53489B-7C51-4A42-A0FD-C92D104BC202" version="1" waitType="Wait For"/>
+          <ConditionStep checkPeriod="1" falseAction="Continue" falseStep="" logCompletion="TRUE" logStart="FALSE" name="Charge Until Cutoff Current is Reached" outputToVariable="FALSE" outputVariable="" timeoutSeconds="600" trueAction="Continue" trueStep="56833FAF-1A24-4171-8BAB-667090DE5920" uid="70C7CC81-C91F-412A-A329-82B10A77F577">
+            <Comparison compare="Sensor" compareWithValueSource="Value" comparison="LT" name="Cutoff Current" outputToVariable="FALSE" outputVariable="" sensorTag="power_supply_current" uid="9EC0E03F-015F-490D-936C-4A186CC0BC54" value="0.3" variableTag="" version="1"/>
+          </ConditionStep>
+          <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn off Power Supply" sensorTag="" state="FALSE" switchTag="power_supply_enable_output" timeoutSeconds="0" uid="3CCEE5F5-D241-4BB0-9D27-C62956AF3C68" valueSource="Value" variableTag=""/>
+        </Sequence>
+        <Sequence description="" logCompletion="TRUE" logStart="FALSE" name="Battery Temperature Check" timeoutSeconds="0" uid="56833FAF-1A24-4171-8BAB-667090DE5920">
+          <SetStatus logCompletion="TRUE" logStart="FALSE" name="Cooling Status Message" status="Cooling" tag="test_status" timeoutSeconds="0" uid="DE93CFA9-B83C-4B5A-8DED-77FE834BF3D4"/>
+          <ConditionStep checkPeriod="1" falseAction="Continue" falseStep="" logCompletion="TRUE" logStart="FALSE" name="Temperature Check" outputToVariable="FALSE" outputVariable="" timeoutSeconds="600" trueAction="Continue" trueStep="" uid="2242CDCE-EE94-4209-9CAD-AE73AE84109C">
+            <Comparison compare="Sensor" compareWithValueSource="Value" comparison="LT" name="Below Maximum Allowable Temp?" outputToVariable="FALSE" outputVariable="" sensorTag="calc_bms_pack_temp_max" uid="194219E3-67AF-4D2D-860A-F178CB538937" value="35" variableTag="" version="1"/>
+          </ConditionStep>
+        </Sequence>
+        <TestCriteriaEvaluation criteriaMap="718C2399-6E4A-40C8-B3DA-5E38F4AFFCFF=calc_pack_ocv" description="" failAction="Go To Step" failStep="52B26E4F-1B6A-426A-8778-D3423677075B" logCompletion="TRUE" logStart="FALSE" name="Acceptance Criteria - Pack OCV" outputToVariable="FALSE" outputVariable="" passAction="Continue" passStep="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="8C354A4E-D4C9-480C-840C-2A55A4E7F28A"/>
+        <TestCriteriaEvaluation criteriaMap="FCFF6393-040A-4225-A208-E75AE9173646=calc_cell_ocv_1,calc_cell_ocv_2,calc_cell_ocv_3,calc_cell_ocv_4,calc_cell_ocv_5,calc_cell_ocv_6,calc_cell_ocv_7,calc_cell_ocv_8,calc_cell_ocv_9,calc_cell_ocv_10,calc_cell_ocv_11,calc_cell_ocv_12,calc_cell_ocv_13,calc_cell_ocv_14" description="" failAction="Go To Step" failStep="52B26E4F-1B6A-426A-8778-D3423677075B" logCompletion="TRUE" logStart="FALSE" name="Acceptance Criteria - Individual Cell OCV" outputToVariable="FALSE" outputVariable="" passAction="Continue" passStep="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="BA9185DD-DF6F-46BB-85A4-D874EF589C8A"/>
+        <Sequence description="" logCompletion="TRUE" logStart="TRUE" name="Discharge at 6C" timeoutSeconds="0" uid="707B1942-14DB-4E62-81A5-D63B24064068">
+          <SetStatus logCompletion="TRUE" logStart="FALSE" name="Discharge Status Message" status="Discharging" tag="test_status" timeoutSeconds="0" uid="C3B17A8E-076A-41B7-B953-5920CD3A7B1B"/>
+          <StartPeriodicLog duration_s="0" interval_s="0.5" logCompletion="TRUE" logStart="FALSE" loggedGroupName="ESR Pulse" name="Start Recording Pulse Data" numSamples="0" templateGroupName="ESR Pulse" timeoutSeconds="0" uid="4E942908-334F-4C9A-A282-1F67B7BAE46C" waitForCompletion="FALSE">
+            <DynamicName>
+              <Text text="ESR Pulse 1 - 6C"/>
+            </DynamicName>
+          </StartPeriodicLog>
+          <WaitStep elapsedTimeVariable="" logCompletion="TRUE" logStart="FALSE" name="5s pause for Data Start" remainingTimeVariable="" stepTag="" time="5.000000" timeValueSource="Constant" timeoutSeconds="0" uid="E33B6533-5EC9-4610-9ED1-F30A2460E9A3" version="1" waitType="Wait For"/>
+          <SetEnum enumTag="electronic_load_operation_mode" enumValue="2" logCompletion="TRUE" logStart="FALSE" name="Set Load State" sensorTag="" timeoutSeconds="0" uid="3CB1E121-504F-41BE-A9C1-B1152769B25B" valueSource="Value" variableTag=""/>
+          <SetSetpoint logCompletion="TRUE" logStart="FALSE" name="Set Load Current to 6C - 26.4" sensorTag="" setpoint="26.4" setpointTag="electronic_load_current_setpoint" timeoutSeconds="0" uid="5D7F756B-44F8-477D-A774-54CADAFC3290" valueSource="Value" variableTag=""/>
+          <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn on Load" sensorTag="" state="TRUE" switchTag="electronic_load_enable_input" timeoutSeconds="0" uid="10365613-8526-470D-84DE-587225B576F5" valueSource="Value" variableTag=""/>
+          <WaitStep elapsedTimeVariable="" logCompletion="TRUE" logStart="FALSE" name="6C Pulse (10s)" remainingTimeVariable="" stepTag="" time="10.000000" timeValueSource="Constant" timeoutSeconds="0" uid="18458AB8-D15F-43BD-8E65-BB808A21FC79" version="1" waitType="Wait For"/>
+          <TestCriteriaEvaluation criteriaMap="1395414F-92C9-4BBF-85B2-BDC0DDFF30EC=calc_cell_impedance_1,calc_cell_impedance_2,calc_cell_impedance_3,calc_cell_impedance_4,calc_cell_impedance_5,calc_cell_impedance_6,calc_cell_impedance_7,calc_cell_impedance_8,calc_cell_impedance_9,calc_cell_impedance_10,calc_cell_impedance_11,calc_cell_impedance_12,calc_cell_impedance_13,calc_cell_impedance_14" description="" failAction="Go To Step" failStep="52B26E4F-1B6A-426A-8778-D3423677075B" logCompletion="TRUE" logStart="FALSE" name="Acceptance Criteria - ESR Max - 6C" outputToVariable="FALSE" outputVariable="" passAction="Continue" passStep="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="78C19AAE-117C-491E-89E5-68A59BB19620"/>
+          <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn off Load" sensorTag="" state="FALSE" switchTag="electronic_load_enable_input" timeoutSeconds="0" uid="28BD3098-7B29-4F87-834B-4EA637F68639" valueSource="Value" variableTag=""/>
+          <WaitStep elapsedTimeVariable="" logCompletion="TRUE" logStart="FALSE" name="Wait" remainingTimeVariable="" stepTag="" time="5.000000" timeValueSource="Constant" timeoutSeconds="0" uid="40EDE55F-AC12-4095-8573-5276E93C848C" version="1" waitType="Wait For"/>
+          <StopPeriodicLog groupName="ESR Pulse" logCompletion="TRUE" logStart="FALSE" name="Stop Recording Pulse Data" timeoutSeconds="0" uid="083CF085-634B-403C-A1E3-09066EAC0513"/>
+        </Sequence>
+        <TestCriteriaEvaluation criteriaMap="EC89EF36-1B20-419E-91E5-B08A964787E1=PackTemps1,PackTemps2,PackTemps3,PackTemps4" description="" failAction="Go To Step" failStep="52B26E4F-1B6A-426A-8778-D3423677075B" logCompletion="TRUE" logStart="FALSE" name="Acceptance Criteria - Temperature Max" outputToVariable="FALSE" outputVariable="" passAction="Continue" passStep="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="0720690C-E7A6-4BE4-9C6F-467493AF645D"/>
+      </Sequence>
+      <Sequence description="" logCompletion="TRUE" logStart="TRUE" name="Pulse 2 - 12C" timeoutSeconds="0" uid="D6E06A95-60B7-4810-AFCA-1024E409AA10">
+        <ConditionStep checkPeriod="0" falseAction="Go To Step" falseStep="D840DAAD-F80A-4CB5-9AE2-8C1BDFBF6FF3" logCompletion="TRUE" logStart="FALSE" name="Check Start Voltage" outputToVariable="FALSE" outputVariable="" timeoutSeconds="0" trueAction="Go To Step" trueStep="56BDC7DB-1E96-40A0-8147-57652A22BFBD" uid="0910120E-035B-4760-9570-28E20587FB28">
+          <Comparison compare="Sensor" compareWithValueSource="Value" comparison="GTOET" name="Above Minimum Start Voltage" outputToVariable="FALSE" outputVariable="" sensorTag="PackVoltage" uid="066A8A2A-FFEC-4C2E-95AC-7AF44A0DA862" value="53.2" variableTag="" version="1"/>
+        </ConditionStep>
+        <Sequence description="" logCompletion="TRUE" logStart="FALSE" name="Charge to Desired Voltage" timeoutSeconds="0" uid="D840DAAD-F80A-4CB5-9AE2-8C1BDFBF6FF3">
+          <SetStatus logCompletion="TRUE" logStart="FALSE" name="Charging Status Message" status="Charging" tag="test_status" timeoutSeconds="0" uid="4539397E-9CCE-4401-B4FB-3673689F7A16"/>
+          <Sequence description="" logCompletion="TRUE" logStart="FALSE" name="Set Power Supply to Charge" timeoutSeconds="0" uid="683381B8-B392-438C-B64F-5188362E8217">
+            <SetSetpoint logCompletion="TRUE" logStart="FALSE" name="Set Setpoint" sensorTag="" setpoint="8.8" setpointTag="power_supply_current_limit" timeoutSeconds="0" uid="8E082698-2DA2-41FB-8D7D-823F45023DFC" valueSource="Value" variableTag=""/>
+            <SetSetpoint logCompletion="TRUE" logStart="FALSE" name="Set Voltage" sensorTag="" setpoint="53.2" setpointTag="power_supply_voltage_setpoint" timeoutSeconds="0" uid="0FC1C29F-F600-4544-80B1-6A4780F3563F" valueSource="Value" variableTag=""/>
+            <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn Power Supply On" sensorTag="" state="TRUE" switchTag="power_supply_enable_output" timeoutSeconds="0" uid="E999C98B-C9CB-4526-B6EA-1865E1A2A632" valueSource="Value" variableTag=""/>
+          </Sequence>
+          <WaitStep elapsedTimeVariable="" logCompletion="TRUE" logStart="FALSE" name="Wait for charging to begin" remainingTimeVariable="" stepTag="" time="10.000000" timeValueSource="Constant" timeoutSeconds="0" uid="91E95AF1-02DF-4BBA-B617-28ADDBA58524" version="1" waitType="Wait For"/>
+          <ConditionStep checkPeriod="1" falseAction="Continue" falseStep="" logCompletion="TRUE" logStart="FALSE" name="Charge Until Cutoff Current is Reached" outputToVariable="FALSE" outputVariable="" timeoutSeconds="600" trueAction="Continue" trueStep="56833FAF-1A24-4171-8BAB-667090DE5920" uid="5E4D758D-E310-4363-BB89-D204F4AB2E93">
+            <Comparison compare="Sensor" compareWithValueSource="Value" comparison="LT" name="Cutoff Current" outputToVariable="FALSE" outputVariable="" sensorTag="power_supply_current" uid="3A312397-83CE-4037-A269-D030D22877AD" value="0.3" variableTag="" version="1"/>
+          </ConditionStep>
+          <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn off Power Supply" sensorTag="" state="FALSE" switchTag="power_supply_enable_output" timeoutSeconds="0" uid="5576513F-D40D-40D2-B632-3A14E0E5B3B6" valueSource="Value" variableTag=""/>
+        </Sequence>
+        <Sequence description="" logCompletion="TRUE" logStart="FALSE" name="Battery Temperature Check" timeoutSeconds="0" uid="56BDC7DB-1E96-40A0-8147-57652A22BFBD">
+          <SetStatus logCompletion="TRUE" logStart="FALSE" name="Cooling Status Message" status="Cooling" tag="test_status" timeoutSeconds="0" uid="40E49673-EE51-4BD4-925D-5EC8B17FD746"/>
+          <ConditionStep checkPeriod="1" falseAction="Continue" falseStep="" logCompletion="TRUE" logStart="FALSE" name="Temperature Check" outputToVariable="FALSE" outputVariable="" timeoutSeconds="600" trueAction="Continue" trueStep="" uid="C702B8FC-259E-4D32-A25F-B05CE49BD017">
+            <Comparison compare="Sensor" compareWithValueSource="Value" comparison="LT" name="Below Maximum Allowable Temp?" outputToVariable="FALSE" outputVariable="" sensorTag="calc_bms_pack_temp_max" uid="64F76A3D-3E60-4F2C-8204-719886BB9753" value="35" variableTag="" version="1"/>
+          </ConditionStep>
+        </Sequence>
+        <TestCriteriaEvaluation criteriaMap="718C2399-6E4A-40C8-B3DA-5E38F4AFFCFF=calc_pack_ocv" description="" failAction="Go To Step" failStep="52B26E4F-1B6A-426A-8778-D3423677075B" logCompletion="TRUE" logStart="FALSE" name="Acceptance Criteria - Pack OCV" outputToVariable="FALSE" outputVariable="" passAction="Continue" passStep="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="87272BAF-8FE4-46E6-A8A9-8D39A03D6B08"/>
+        <TestCriteriaEvaluation criteriaMap="FCFF6393-040A-4225-A208-E75AE9173646=calc_cell_ocv_1,calc_cell_ocv_2,calc_cell_ocv_3,calc_cell_ocv_4,calc_cell_ocv_5,calc_cell_ocv_6,calc_cell_ocv_7,calc_cell_ocv_8,calc_cell_ocv_9,calc_cell_ocv_10,calc_cell_ocv_11,calc_cell_ocv_12,calc_cell_ocv_13,calc_cell_ocv_14" description="" failAction="Go To Step" failStep="52B26E4F-1B6A-426A-8778-D3423677075B" logCompletion="TRUE" logStart="FALSE" name="Acceptance Criteria - Individual Cell OCV" outputToVariable="FALSE" outputVariable="" passAction="Continue" passStep="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="F97C23C6-122C-4FD7-A5B7-76450B3E3D3E"/>
+        <Sequence description="" logCompletion="TRUE" logStart="TRUE" name="Discharge at 12C" timeoutSeconds="0" uid="8CEBC5F3-B7A8-4D1B-BE29-75F13BE549C0">
+          <SetStatus logCompletion="TRUE" logStart="FALSE" name="Discharge Status Message" status="Discharging" tag="test_status" timeoutSeconds="0" uid="38BF143E-0124-4359-8074-1990CC49270F"/>
+          <StartPeriodicLog duration_s="0" interval_s="0.5" logCompletion="TRUE" logStart="FALSE" loggedGroupName="ESR Pulse" name="Start Recording Pulse Data" numSamples="0" templateGroupName="ESR Pulse" timeoutSeconds="0" uid="1E823CF6-ED67-40F3-A0A8-D064A0B1AF1E" waitForCompletion="FALSE">
+            <DynamicName>
+              <Text text="ESR Pulse 2 - 12C"/>
+            </DynamicName>
+          </StartPeriodicLog>
+          <WaitStep elapsedTimeVariable="" logCompletion="TRUE" logStart="FALSE" name="5s pause for Data Start" remainingTimeVariable="" stepTag="" time="5.000000" timeValueSource="Constant" timeoutSeconds="0" uid="1AA4CAE8-A9F1-4340-A881-A6A3BBC07439" version="1" waitType="Wait For"/>
+          <SetEnum enumTag="electronic_load_operation_mode" enumValue="2" logCompletion="TRUE" logStart="FALSE" name="Set Load State" sensorTag="" timeoutSeconds="0" uid="D41BDF04-6ABE-4CF7-AD00-D9CC92880C5E" valueSource="Value" variableTag=""/>
+          <SetSetpoint logCompletion="TRUE" logStart="FALSE" name="Set Load Current to 12C - 52.8" sensorTag="" setpoint="52.8" setpointTag="electronic_load_current_setpoint" timeoutSeconds="0" uid="705FCEA1-4BAB-4259-AB44-F0E26CF685B5" valueSource="Value" variableTag=""/>
+          <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn on Load" sensorTag="" state="TRUE" switchTag="electronic_load_enable_input" timeoutSeconds="0" uid="A256F424-7B61-4BF1-95E7-3E3DD01761F2" valueSource="Value" variableTag=""/>
+          <WaitStep elapsedTimeVariable="" logCompletion="TRUE" logStart="TRUE" name="12C Pulse (10s)" remainingTimeVariable="" stepTag="" time="10.000000" timeValueSource="Constant" timeoutSeconds="0" uid="F9E03D08-6A0E-46BD-B2EF-7D6064D2747F" version="1" waitType="Wait For"/>
+          <TestCriteriaEvaluation criteriaMap="1395414F-92C9-4BBF-85B2-BDC0DDFF30EC=calc_cell_impedance_1,calc_cell_impedance_2,calc_cell_impedance_3,calc_cell_impedance_4,calc_cell_impedance_5,calc_cell_impedance_6,calc_cell_impedance_7,calc_cell_impedance_8,calc_cell_impedance_9,calc_cell_impedance_10,calc_cell_impedance_11,calc_cell_impedance_12,calc_cell_impedance_13,calc_cell_impedance_14" description="" failAction="Go To Step" failStep="52B26E4F-1B6A-426A-8778-D3423677075B" logCompletion="TRUE" logStart="FALSE" name="Acceptance Criteria - ESR Max - 6C" outputToVariable="FALSE" outputVariable="" passAction="Continue" passStep="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="1B5C8779-A71E-4BC8-B13A-AEAB69F097EB"/>
+          <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn off Load" sensorTag="" state="FALSE" switchTag="electronic_load_enable_input" timeoutSeconds="0" uid="D545A6BB-41B3-4A33-A1EC-E560665DA13B" valueSource="Value" variableTag=""/>
+          <WaitStep elapsedTimeVariable="" logCompletion="TRUE" logStart="FALSE" name="Wait" remainingTimeVariable="" stepTag="" time="5.000000" timeValueSource="Constant" timeoutSeconds="0" uid="AA7F1B81-3DAF-4075-AB27-3F11BC03588F" version="1" waitType="Wait For"/>
+          <StopPeriodicLog groupName="ESR Pulse" logCompletion="TRUE" logStart="FALSE" name="Stop Recording Pulse Data" timeoutSeconds="0" uid="57D10ADB-53B1-4D95-8673-E2A6E3773ADC"/>
+        </Sequence>
+        <TestCriteriaEvaluation criteriaMap="EC89EF36-1B20-419E-91E5-B08A964787E1=PackTemps1,PackTemps2,PackTemps3,PackTemps4" description="" failAction="Go To Step" failStep="52B26E4F-1B6A-426A-8778-D3423677075B" logCompletion="TRUE" logStart="FALSE" name="Acceptance Criteria - Temperature Max" outputToVariable="FALSE" outputVariable="" passAction="Continue" passStep="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="4F8C54E0-2EA0-4EA6-A613-1F0509D61E6B"/>
+      </Sequence>
+      <Sequence description="" logCompletion="TRUE" logStart="TRUE" name="Pulse 3 - 24C" timeoutSeconds="0" uid="3CB77680-2A93-4F1B-A8EB-87BAAA15152F">
+        <ConditionStep checkPeriod="0" falseAction="Go To Step" falseStep="62DC1102-B5D1-47D7-8D65-889A567F1309" logCompletion="TRUE" logStart="FALSE" name="Check Start Voltage" outputToVariable="FALSE" outputVariable="" timeoutSeconds="0" trueAction="Go To Step" trueStep="F241FACF-AF86-4EC4-A746-403A95287245" uid="617853D0-CDA9-4475-921E-E8C81F443B51">
+          <Comparison compare="Sensor" compareWithValueSource="Value" comparison="GTOET" name="Above Minimum Start Voltage" outputToVariable="FALSE" outputVariable="" sensorTag="PackVoltage" uid="B3D6F0EE-2903-4185-83FF-312A45FFC107" value="53.2" variableTag="" version="1"/>
+        </ConditionStep>
+        <Sequence description="" logCompletion="TRUE" logStart="FALSE" name="Charge to Desired Voltage" timeoutSeconds="0" uid="62DC1102-B5D1-47D7-8D65-889A567F1309">
+          <SetStatus logCompletion="TRUE" logStart="FALSE" name="Charging Status Message" status="Charging" tag="test_status" timeoutSeconds="0" uid="BAB8366D-9C72-49DE-B0EF-97024D078264"/>
+          <Sequence description="" logCompletion="TRUE" logStart="FALSE" name="Set Power Supply to Charge" timeoutSeconds="0" uid="CA086748-9869-4406-9845-7382B9622786">
+            <SetSetpoint logCompletion="TRUE" logStart="FALSE" name="Set Setpoint" sensorTag="" setpoint="8.8" setpointTag="power_supply_current_limit" timeoutSeconds="0" uid="A6EFE411-4D05-4731-BE71-83C3F90EFC4A" valueSource="Value" variableTag=""/>
+            <SetSetpoint logCompletion="TRUE" logStart="FALSE" name="Set Voltage" sensorTag="" setpoint="53.2" setpointTag="power_supply_voltage_setpoint" timeoutSeconds="0" uid="CE4244A1-6D0D-4249-836F-DA8C0912BD6D" valueSource="Value" variableTag=""/>
+            <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn Power Supply On" sensorTag="" state="TRUE" switchTag="power_supply_enable_output" timeoutSeconds="0" uid="EAFEA4DE-26AA-4F56-9EA2-8ADFF0BFD29A" valueSource="Value" variableTag=""/>
+          </Sequence>
+          <WaitStep elapsedTimeVariable="" logCompletion="TRUE" logStart="FALSE" name="Wait for charging to begin" remainingTimeVariable="" stepTag="" time="10.000000" timeValueSource="Constant" timeoutSeconds="0" uid="F4C04503-AA46-4C69-9DB3-8535B027C03B" version="1" waitType="Wait For"/>
+          <ConditionStep checkPeriod="1" falseAction="Continue" falseStep="" logCompletion="TRUE" logStart="FALSE" name="Charge Until Cutoff Current is Reached" outputToVariable="FALSE" outputVariable="" timeoutSeconds="600" trueAction="Continue" trueStep="56833FAF-1A24-4171-8BAB-667090DE5920" uid="83645DD7-C4B9-4EEB-9513-5E424A940441">
+            <Comparison compare="Sensor" compareWithValueSource="Value" comparison="LT" name="Cutoff Current" outputToVariable="FALSE" outputVariable="" sensorTag="power_supply_current" uid="FDC82363-CBBE-4249-B99C-7908F3DCAEF9" value="0.3" variableTag="" version="1"/>
+          </ConditionStep>
+          <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn off Power Supply" sensorTag="" state="FALSE" switchTag="power_supply_enable_output" timeoutSeconds="0" uid="0896314F-6457-4AB0-8AE7-9C50408D0425" valueSource="Value" variableTag=""/>
+        </Sequence>
+        <Sequence description="" logCompletion="TRUE" logStart="FALSE" name="Battery Temperature Check" timeoutSeconds="0" uid="F241FACF-AF86-4EC4-A746-403A95287245">
+          <SetStatus logCompletion="TRUE" logStart="FALSE" name="Cooling Status Message" status="Cooling" tag="test_status" timeoutSeconds="0" uid="894270EF-D4DD-46FB-8999-3487963DD4DB"/>
+          <ConditionStep checkPeriod="1" falseAction="Continue" falseStep="" logCompletion="TRUE" logStart="FALSE" name="Temperature Check" outputToVariable="FALSE" outputVariable="" timeoutSeconds="600" trueAction="Continue" trueStep="" uid="11D4A265-6A39-4770-96CC-99B605A3BC6E">
+            <Comparison compare="Sensor" compareWithValueSource="Value" comparison="LT" name="Below Maximum Allowable Temp?" outputToVariable="FALSE" outputVariable="" sensorTag="calc_bms_pack_temp_max" uid="063A4CF6-B44F-41C6-8000-EB4FBAEBD07E" value="35" variableTag="" version="1"/>
+          </ConditionStep>
+        </Sequence>
+        <TestCriteriaEvaluation criteriaMap="718C2399-6E4A-40C8-B3DA-5E38F4AFFCFF=calc_pack_ocv" description="" failAction="Go To Step" failStep="52B26E4F-1B6A-426A-8778-D3423677075B" logCompletion="TRUE" logStart="FALSE" name="Acceptance Criteria - Pack OCV" outputToVariable="FALSE" outputVariable="" passAction="Continue" passStep="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="9E425182-655B-4B9D-8E74-F6710D02B83E"/>
+        <TestCriteriaEvaluation criteriaMap="FCFF6393-040A-4225-A208-E75AE9173646=calc_cell_ocv_1,calc_cell_ocv_2,calc_cell_ocv_3,calc_cell_ocv_4,calc_cell_ocv_5,calc_cell_ocv_6,calc_cell_ocv_7,calc_cell_ocv_8,calc_cell_ocv_9,calc_cell_ocv_10,calc_cell_ocv_11,calc_cell_ocv_12,calc_cell_ocv_13,calc_cell_ocv_14" description="" failAction="Go To Step" failStep="52B26E4F-1B6A-426A-8778-D3423677075B" logCompletion="TRUE" logStart="FALSE" name="Acceptance Criteria - Individual Cell OCV" outputToVariable="FALSE" outputVariable="" passAction="Continue" passStep="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="BC4408F3-6578-4494-B555-3B42AD6257D2"/>
+        <Sequence description="" logCompletion="TRUE" logStart="TRUE" name="Discharge at 24C" timeoutSeconds="0" uid="7197D641-ED0D-4961-8459-7E4A62162B50">
+          <SetStatus logCompletion="TRUE" logStart="FALSE" name="Discharge Status Message" status="Discharging" tag="test_status" timeoutSeconds="0" uid="8F4E64FD-4524-4F05-AA4B-CE9628C4971F"/>
+          <StartPeriodicLog duration_s="0" interval_s="0.5" logCompletion="TRUE" logStart="FALSE" loggedGroupName="ESR Pulse" name="Start Recording Pulse Data" numSamples="0" templateGroupName="ESR Pulse" timeoutSeconds="0" uid="B54698B6-F5BF-4978-AEDE-A32C3C9682AE" waitForCompletion="FALSE">
+            <DynamicName>
+              <Text text="ESR Pulse 3 - 24C"/>
+            </DynamicName>
+          </StartPeriodicLog>
+          <WaitStep elapsedTimeVariable="" logCompletion="TRUE" logStart="FALSE" name="5s pause for Data Start" remainingTimeVariable="" stepTag="" time="5.000000" timeValueSource="Constant" timeoutSeconds="0" uid="A1D0AEEB-CE4C-413B-8366-3C3A474EBF24" version="1" waitType="Wait For"/>
+          <SetEnum enumTag="electronic_load_operation_mode" enumValue="2" logCompletion="TRUE" logStart="FALSE" name="Set Load State" sensorTag="" timeoutSeconds="0" uid="991E9E23-0D65-4487-BE10-F9ED47BC3304" valueSource="Value" variableTag=""/>
+          <SetSetpoint logCompletion="TRUE" logStart="FALSE" name="Set Load Current to 24C - 105.6" sensorTag="" setpoint="105.6" setpointTag="electronic_load_current_setpoint" timeoutSeconds="0" uid="779D20A7-B8D9-4B76-AFA1-C3D898C6AAF6" valueSource="Value" variableTag=""/>
+          <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn on Load" sensorTag="" state="TRUE" switchTag="electronic_load_enable_input" timeoutSeconds="0" uid="91627087-21B2-453B-8251-9DDF21D82328" valueSource="Value" variableTag=""/>
+          <WaitStep elapsedTimeVariable="" logCompletion="TRUE" logStart="TRUE" name="24C Pulse (10s)" remainingTimeVariable="" stepTag="" time="10.000000" timeValueSource="Constant" timeoutSeconds="0" uid="66713066-2BE9-4FDE-9E94-CF28F300497A" version="1" waitType="Wait For"/>
+          <TestCriteriaEvaluation criteriaMap="1395414F-92C9-4BBF-85B2-BDC0DDFF30EC=calc_cell_impedance_1,calc_cell_impedance_2,calc_cell_impedance_3,calc_cell_impedance_4,calc_cell_impedance_5,calc_cell_impedance_6,calc_cell_impedance_7,calc_cell_impedance_8,calc_cell_impedance_9,calc_cell_impedance_10,calc_cell_impedance_11,calc_cell_impedance_12,calc_cell_impedance_13,calc_cell_impedance_14" description="" failAction="Go To Step" failStep="52B26E4F-1B6A-426A-8778-D3423677075B" logCompletion="TRUE" logStart="FALSE" name="Acceptance Criteria - ESR Max - 6C" outputToVariable="FALSE" outputVariable="" passAction="Continue" passStep="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="F953C136-5F97-4BEC-932F-4D9AE946174E"/>
+          <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn off Load" sensorTag="" state="FALSE" switchTag="electronic_load_enable_input" timeoutSeconds="0" uid="740F5909-3F38-4DF8-9D48-8647E7FDA9F7" valueSource="Value" variableTag=""/>
+          <WaitStep elapsedTimeVariable="" logCompletion="TRUE" logStart="FALSE" name="Wait" remainingTimeVariable="" stepTag="" time="5.000000" timeValueSource="Constant" timeoutSeconds="0" uid="D4722763-66C4-4D6C-88FB-6229A6E278DD" version="1" waitType="Wait For"/>
+          <StopPeriodicLog groupName="ESR Pulse" logCompletion="TRUE" logStart="FALSE" name="Stop Recording Pulse Data" timeoutSeconds="0" uid="45045687-0B52-42C8-BBC1-76504A962217"/>
+        </Sequence>
+        <TestCriteriaEvaluation criteriaMap="EC89EF36-1B20-419E-91E5-B08A964787E1=PackTemps1,PackTemps2,PackTemps3,PackTemps4" description="" failAction="Go To Step" failStep="52B26E4F-1B6A-426A-8778-D3423677075B" logCompletion="TRUE" logStart="FALSE" name="Acceptance Criteria - Temperature Max" outputToVariable="FALSE" outputVariable="" passAction="Continue" passStep="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="FCED1E66-44FD-466B-BD6F-E5A283D8C3CC"/>
+      </Sequence>
+      <Sequence description="" logCompletion="TRUE" logStart="TRUE" name="Pulse 4 - 36C" timeoutSeconds="0" uid="2B8ED8A5-D52E-44D4-AC15-7B9F1506C4D8">
+        <ConditionStep checkPeriod="0" falseAction="Go To Step" falseStep="68F11400-F1E3-4A0B-B508-2C9BC2328C2B" logCompletion="TRUE" logStart="FALSE" name="Check Start Voltage" outputToVariable="FALSE" outputVariable="" timeoutSeconds="0" trueAction="Go To Step" trueStep="4AFA9ADC-4210-485A-A306-F2B277FACC8A" uid="F328F53D-3F72-422D-986F-48AA9375B47B">
+          <Comparison compare="Sensor" compareWithValueSource="Value" comparison="GTOET" name="Above Minimum Start Voltage" outputToVariable="FALSE" outputVariable="" sensorTag="PackVoltage" uid="DCDB6D65-4829-4D73-97B3-527C41F884EB" value="53.2" variableTag="" version="1"/>
+        </ConditionStep>
+        <Sequence description="" logCompletion="TRUE" logStart="FALSE" name="Charge to Desired Voltage" timeoutSeconds="0" uid="68F11400-F1E3-4A0B-B508-2C9BC2328C2B">
+          <SetStatus logCompletion="TRUE" logStart="FALSE" name="Charging Status Message" status="Charging" tag="test_status" timeoutSeconds="0" uid="BE71E451-51AE-4609-B232-77362AE8B1A3"/>
+          <Sequence description="" logCompletion="TRUE" logStart="FALSE" name="Set Power Supply to Charge" timeoutSeconds="0" uid="C70672AD-1C6E-4450-80AE-C6B3F3DB7B51">
+            <SetSetpoint logCompletion="TRUE" logStart="FALSE" name="Set Setpoint" sensorTag="" setpoint="8.8" setpointTag="power_supply_current_limit" timeoutSeconds="0" uid="76DE4266-2229-4FF1-806D-045E88AD2C92" valueSource="Value" variableTag=""/>
+            <SetSetpoint logCompletion="TRUE" logStart="FALSE" name="Set Voltage" sensorTag="" setpoint="53.2" setpointTag="power_supply_voltage_setpoint" timeoutSeconds="0" uid="21EFBEC4-D807-4D8B-A27C-67979A449E67" valueSource="Value" variableTag=""/>
+            <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn Power Supply On" sensorTag="" state="TRUE" switchTag="power_supply_enable_output" timeoutSeconds="0" uid="38250C87-FC97-462D-BA7D-4029EFFFF336" valueSource="Value" variableTag=""/>
+          </Sequence>
+          <WaitStep elapsedTimeVariable="" logCompletion="TRUE" logStart="FALSE" name="Wait for charging to begin" remainingTimeVariable="" stepTag="" time="10.000000" timeValueSource="Constant" timeoutSeconds="0" uid="3C134E16-E3E8-444A-8661-5762A03757F7" version="1" waitType="Wait For"/>
+          <ConditionStep checkPeriod="1" falseAction="Continue" falseStep="" logCompletion="TRUE" logStart="FALSE" name="Charge Until Cutoff Current is Reached" outputToVariable="FALSE" outputVariable="" timeoutSeconds="600" trueAction="Continue" trueStep="56833FAF-1A24-4171-8BAB-667090DE5920" uid="135892DD-0F14-4A9F-9F03-D9F599DFD086">
+            <Comparison compare="Sensor" compareWithValueSource="Value" comparison="LT" name="Cutoff Current" outputToVariable="FALSE" outputVariable="" sensorTag="power_supply_current" uid="A17A42DA-1FB1-408D-AE6D-FA4DA83B6BB7" value="0.3" variableTag="" version="1"/>
+          </ConditionStep>
+          <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn off Power Supply" sensorTag="" state="FALSE" switchTag="power_supply_enable_output" timeoutSeconds="0" uid="2AC166DF-85CA-47A1-BF47-0166CDFC27D8" valueSource="Value" variableTag=""/>
+        </Sequence>
+        <Sequence description="" logCompletion="TRUE" logStart="FALSE" name="Battery Temperature Check" timeoutSeconds="0" uid="4AFA9ADC-4210-485A-A306-F2B277FACC8A">
+          <SetStatus logCompletion="TRUE" logStart="FALSE" name="Cooling Status Message" status="Cooling" tag="test_status" timeoutSeconds="0" uid="5A0B688F-546A-499C-8247-5F3C831A7B69"/>
+          <ConditionStep checkPeriod="1" falseAction="Continue" falseStep="" logCompletion="TRUE" logStart="FALSE" name="Temperature Check" outputToVariable="FALSE" outputVariable="" timeoutSeconds="600" trueAction="Continue" trueStep="" uid="125DD7F1-EF44-4244-8CC6-DF563DF7B0C7">
+            <Comparison compare="Sensor" compareWithValueSource="Value" comparison="LT" name="Below Maximum Allowable Temp?" outputToVariable="FALSE" outputVariable="" sensorTag="calc_bms_pack_temp_max" uid="9B067C6A-565C-4F01-A4F2-CBD339D64845" value="35" variableTag="" version="1"/>
+          </ConditionStep>
+        </Sequence>
+        <TestCriteriaEvaluation criteriaMap="718C2399-6E4A-40C8-B3DA-5E38F4AFFCFF=calc_pack_ocv" description="" failAction="Go To Step" failStep="52B26E4F-1B6A-426A-8778-D3423677075B" logCompletion="TRUE" logStart="FALSE" name="Acceptance Criteria - Pack OCV" outputToVariable="FALSE" outputVariable="" passAction="Continue" passStep="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="D48D198C-1841-45F7-8132-5FF58D394BA3"/>
+        <TestCriteriaEvaluation criteriaMap="FCFF6393-040A-4225-A208-E75AE9173646=calc_cell_ocv_1,calc_cell_ocv_2,calc_cell_ocv_3,calc_cell_ocv_4,calc_cell_ocv_5,calc_cell_ocv_6,calc_cell_ocv_7,calc_cell_ocv_8,calc_cell_ocv_9,calc_cell_ocv_10,calc_cell_ocv_11,calc_cell_ocv_12,calc_cell_ocv_13,calc_cell_ocv_14" description="" failAction="Go To Step" failStep="52B26E4F-1B6A-426A-8778-D3423677075B" logCompletion="TRUE" logStart="FALSE" name="Acceptance Criteria - Individual Cell OCV" outputToVariable="FALSE" outputVariable="" passAction="Continue" passStep="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="49B50281-BDF9-4901-A356-70FB87FE865E"/>
+        <Sequence description="" logCompletion="TRUE" logStart="TRUE" name="Discharge at 36C" timeoutSeconds="0" uid="73D07D16-BDCA-416E-83CD-0E8D9B658AAD">
+          <SetStatus logCompletion="TRUE" logStart="FALSE" name="Discharge Status Message" status="Discharging" tag="test_status" timeoutSeconds="0" uid="35DB346E-B327-4D70-9923-E82CDBC3D82A"/>
+          <StartPeriodicLog duration_s="0" interval_s="0.5" logCompletion="TRUE" logStart="FALSE" loggedGroupName="ESR Pulse" name="Start Recording Pulse Data" numSamples="0" templateGroupName="ESR Pulse" timeoutSeconds="0" uid="17B2BE82-AF53-4C43-BBC4-2861BA29AC29" waitForCompletion="FALSE">
+            <DynamicName>
+              <Text text="ESR Pulse 4 - 36C"/>
+            </DynamicName>
+          </StartPeriodicLog>
+          <WaitStep elapsedTimeVariable="" logCompletion="TRUE" logStart="FALSE" name="5s pause for Data Start" remainingTimeVariable="" stepTag="" time="5.000000" timeValueSource="Constant" timeoutSeconds="0" uid="7FE0B3B4-713D-4DAF-B26C-FAC473BE0E6A" version="1" waitType="Wait For"/>
+          <SetEnum enumTag="electronic_load_operation_mode" enumValue="2" logCompletion="TRUE" logStart="FALSE" name="Set Load State" sensorTag="" timeoutSeconds="0" uid="D1F82C22-5AA3-4583-BCE2-1185D78CA63D" valueSource="Value" variableTag=""/>
+          <SetSetpoint logCompletion="TRUE" logStart="FALSE" name="Set Load Current to 36C - 158.4" sensorTag="" setpoint="158.4" setpointTag="electronic_load_current_setpoint" timeoutSeconds="0" uid="B2D702ED-456D-46B8-B99B-FEE146667237" valueSource="Value" variableTag=""/>
+          <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn on Load" sensorTag="" state="TRUE" switchTag="electronic_load_enable_input" timeoutSeconds="0" uid="379F8AAC-E88C-4C98-BA7F-188E84BBBCBD" valueSource="Value" variableTag=""/>
+          <WaitStep elapsedTimeVariable="" logCompletion="TRUE" logStart="TRUE" name="36C Pulse (10s)" remainingTimeVariable="" stepTag="" time="10.000000" timeValueSource="Constant" timeoutSeconds="0" uid="9AD4BB0E-B3FC-4CFE-AED2-9068D913DEB9" version="1" waitType="Wait For"/>
+          <TestCriteriaEvaluation criteriaMap="1395414F-92C9-4BBF-85B2-BDC0DDFF30EC=calc_cell_impedance_1,calc_cell_impedance_2,calc_cell_impedance_3,calc_cell_impedance_4,calc_cell_impedance_5,calc_cell_impedance_6,calc_cell_impedance_7,calc_cell_impedance_8,calc_cell_impedance_9,calc_cell_impedance_10,calc_cell_impedance_11,calc_cell_impedance_12,calc_cell_impedance_13,calc_cell_impedance_14" description="" failAction="Go To Step" failStep="52B26E4F-1B6A-426A-8778-D3423677075B" logCompletion="TRUE" logStart="FALSE" name="Acceptance Criteria - ESR Max - 6C" outputToVariable="FALSE" outputVariable="" passAction="Continue" passStep="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="80C91D8D-F16F-48BD-9575-BDD928CFDFEE"/>
+          <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn off Load" sensorTag="" state="FALSE" switchTag="electronic_load_enable_input" timeoutSeconds="0" uid="76FC86E2-7CBF-43F0-BD71-929F718AAB24" valueSource="Value" variableTag=""/>
+          <WaitStep elapsedTimeVariable="" logCompletion="TRUE" logStart="FALSE" name="Wait" remainingTimeVariable="" stepTag="" time="5.000000" timeValueSource="Constant" timeoutSeconds="0" uid="FE9E9721-1C92-4443-B325-DF0B547A3165" version="1" waitType="Wait For"/>
+          <StopPeriodicLog groupName="ESR Pulse" logCompletion="TRUE" logStart="FALSE" name="Stop Recording Pulse Data" timeoutSeconds="0" uid="6018E21F-3B16-4749-8808-0A7918470C50"/>
+        </Sequence>
+        <TestCriteriaEvaluation criteriaMap="EC89EF36-1B20-419E-91E5-B08A964787E1=PackTemps1,PackTemps2,PackTemps3,PackTemps4" description="" failAction="Go To Step" failStep="52B26E4F-1B6A-426A-8778-D3423677075B" logCompletion="TRUE" logStart="FALSE" name="Acceptance Criteria - Temperature Max" outputToVariable="FALSE" outputVariable="" passAction="Continue" passStep="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="B801E59E-5368-4AE8-B823-72C8C7C841D0"/>
+      </Sequence>
+      <GoTo logCompletion="TRUE" logStart="FALSE" name="All Pulses Passed" stepUID="DA1D173E-2AAD-4122-991C-57EE8D431E62" timeoutSeconds="0" uid="E955A773-DD45-436D-A3EA-04624F249312"/>
+    </Sequence>
+    <Sequence description="" logCompletion="TRUE" logStart="TRUE" name="Shutdown" timeoutSeconds="0" uid="481AC6E8-84C3-4C7A-A7FC-47999FC94C3F">
+      <Sequence description="" logCompletion="TRUE" logStart="TRUE" name="Abort Sequence" timeoutSeconds="0" uid="52B26E4F-1B6A-426A-8778-D3423677075B">
+        <SetSwitchState logCompletion="TRUE" logStart="FALSE" name="Turn off Load" sensorTag="" state="FALSE" switchTag="electronic_load_enable_input" timeoutSeconds="0" uid="2113E70D-ADCF-4A5C-8B13-ECAD6AE9622E" valueSource="Value" variableTag=""/>
+        <SetStatus logCompletion="TRUE" logStart="FALSE" name="Set Status" status="Test Aborted" tag="test_status" timeoutSeconds="0" uid="3AFB955F-97C7-4347-92BC-ECFB02E7721E"/>
+        <PlayStatusTone logCompletion="TRUE" logStart="FALSE" name="Play Status Tone" timeoutSeconds="0" tones="440,0,150,0.25;349,0,150,0.25;262,0,300,0.25" uid="0A1BDC5B-4E63-42EC-A2B1-CE1BD9956105"/>
+        <GoTo logCompletion="TRUE" logStart="FALSE" name="Go To" stepUID="B242BD3F-FB13-4F8E-B31E-EC545E62F0C9" timeoutSeconds="0" uid="21B74F07-29D2-4B1A-B123-FDA697B4CA4E"/>
+      </Sequence>
+      <Sequence description="" logCompletion="TRUE" logStart="TRUE" name="Complete Sequence" timeoutSeconds="0" uid="DA1D173E-2AAD-4122-991C-57EE8D431E62">
+        <SetStatus logCompletion="TRUE" logStart="FALSE" name="Set Status" status="Test Complete" tag="test_status" timeoutSeconds="0" uid="1B8FEB78-DE0E-4BE1-B7D1-4D7C9D6AAEDF"/>
+        <PlayStatusTone logCompletion="TRUE" logStart="FALSE" name="Play Status Tone" timeoutSeconds="0" tones="523,0,120,0.25;659,0,120,0.25;784,0,180,0.25" uid="6C63F1DC-07A3-4C07-8B4D-928C1B3B1690"/>
+      </Sequence>
+      <StopLogging logCompletion="TRUE" logStart="FALSE" name="Stop Recording" timeoutSeconds="0" uid="B242BD3F-FB13-4F8E-B31E-EC545E62F0C9"/>
+    </Sequence>
+  </Sequence>
+
+</TestSequence>

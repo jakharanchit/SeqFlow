@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output — `npm run build` regenerates dist/index.html
+dist/
+
+# Claude Code working docs: CLAUDE.md, the spec, the task list, launch.json
+.claude/
+
+# Editor and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local env / tooling caches
+*.local
+.env
+.env.*
+!.env.example
+.vite/
+coverage/
+*.tsbuildinfo
+npm-debug.log*

@@ -1,0 +1,136 @@
+# seqviz rule file
+# All schema knowledge lives here. The parser is generic and reads this to
+# decide what is a container, what to skip, what shape a node gets, and which
+# attributes create non-sequential edges.
+#
+# Adding support for a new step type means editing this file, not the parser.
+
+version: 1
+
+# Elements that hold other steps. Their children are ordered and executed
+# in document order.
+containers:
+  - TestSequence
+  - Sequence
+
+# Elements that are not steps and produce no node. Their content may still be
+# surfaced in the inspector (see `inspector_children`).
+ignore:
+  - Variables
+  - Parameters
+  - Parameter
+  - Timers
+  - StatisticsCalculators
+  - SubSequences
+  - Comparison
+  - DynamicName
+  - Text
+
+# Recognised leaf step elements. Anything in step position that is not listed
+# here still renders, as a plain rectangle, and raises an UNKNOWN_ELEMENT
+# warning — it is never silently dropped. See spec section 3 and NFR-6.
+#
+# Adding support for a new step type starts here.
+steps:
+  - SetSwitchState
+  - WaitStep
+  - TestCriteriaEvaluation
+  - SetStatus
+  - ConditionStep
+  - SetSetpoint
+  - StartPeriodicLog
+  - SetEnum
+  - StopPeriodicLog
+  - GoTo
+  - PlayStatusTone
+  - StartLogging
+  - StopLogging
+
+# Non-step children whose attributes are merged into the parent node's
+# inspector view. Comparison holds the actual condition for a ConditionStep.
+inspector_children:
+  ConditionStep: [Comparison]
+
+# Node shape by element type.
+shapes:
+  ConditionStep:          diamond
+  TestCriteriaEvaluation: hexagon
+  GoTo:                   rounded
+  default:                rect
+
+# Semantic category, used for styling and filtering.
+kinds:
+  ConditionStep:          decision
+  TestCriteriaEvaluation: criteria
+  GoTo:                   jump
+  default:                action
+
+# Attribute pairs that create a non-sequential edge.
+#
+# `when` gates the edge on another attribute's value. This is essential: the
+# target attributes below are populated even when the paired action is
+# "Continue", in which case they hold stale values that must be ignored.
+# See spec section 4.2.
+#
+# A step emits a fall-through edge unless every one of its exits is an
+# explicit jump.
+edges:
+  - when:   {failAction: "Go To Step"}
+    target: failStep
+    label:  fail
+    style:  dotted
+    reason: criteria
+
+  - when:   {passAction: "Go To Step"}
+    target: passStep
+    label:  pass
+    style:  solid
+    reason: criteria
+
+  - when:   {trueAction: "Go To Step"}
+    target: trueStep
+    label:  "true"
+    style:  solid
+    reason: branch
+
+  - when:   {falseAction: "Go To Step"}
+    target: falseStep
+    label:  "false"
+    style:  solid
+    reason: branch
+
+  # GoTo is unconditional — no `when` clause.
+  - when:   {}
+    target: stepUID
+    label:  null
+    style:  solid
+    reason: goto
+
+# Attributes appended to the node label at verbosity=params.
+# Keep these short; long labels degrade auto-layout quality.
+labels:
+  SetSetpoint:      [setpointTag, setpoint]
+  SetSwitchState:   [switchTag, state]
+  SetEnum:          [enumTag, enumValue]
+  SetStatus:        [status]
+  WaitStep:         [time]
+  StartPeriodicLog: [loggedGroupName, interval_s]
+  StopPeriodicLog:  [groupName]
+
+# Attributes treated as signal/tag references, for the cross-reference index.
+signal_attrs:
+  - sensorTag
+  - switchTag
+  - setpointTag
+  - enumTag
+  - variableTag
+  - tag
+
+# Attributes holding references to definitions outside this file. Unresolvable
+# by design — do not emit an unresolved-target warning for these.
+external_refs:
+  - criteriaMap
+
+# Render a target once as a shared terminal, with dotted inbound edges, when
+# more than this many edges converge on it. See spec section 4.5.
+convergence_threshold: 3
