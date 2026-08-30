@@ -27,7 +27,7 @@
  *   edges. There is deliberately no second folding implementation here.
  */
 
-import { displayName } from '../core/ancestry';
+import { displayName, numberedName } from '../core/ancestry';
 import type { Graph, NodeShape, Rules, SeqEdge, SeqNode } from '../core/types';
 import { visibleGraph } from './collapse';
 
@@ -258,7 +258,11 @@ export function mermaidModel(graph: Graph, mode: MermaidMode = { kind: 'full' })
     const group = view.containers.has(uid);
     const hidden = view.collapsedCounts.get(uid);
     const folded = !group && graph.containers.has(uid);
-    const name = escapeLabel(displayName(node));
+    // The number, not the bare name: 27 names cover 106 of the fixture's 133
+    // nodes, so a diagram labelled by name alone cannot be cross-referenced
+    // against a test report or against the tool's own text export. Still
+    // deterministic — the number is a pure function of document order.
+    const name = escapeLabel(numberedName(node));
     const label =
       folded && hidden !== undefined && hidden > 0
         ? `${name}<br/>${hidden} step${hidden === 1 ? '' : 's'}`

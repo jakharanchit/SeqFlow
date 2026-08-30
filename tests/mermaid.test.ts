@@ -27,6 +27,7 @@ function twoStep(label: string, style: 'solid' | 'dotted'): Graph {
     shape: 'rect',
     parent: null,
     depth: 1,
+    stepNumber: '',
     attrs: {},
   });
   return {
@@ -79,7 +80,11 @@ describe('ids and labels', () => {
       '36C Pulse (10s)',
     ]);
     const text = toMermaid(graph, rules);
-    for (const node of hostile) expect(text).toContain(`"${node.name}"`);
+    // Labels carry the step number, so the name is quoted behind it.
+    for (const node of hostile) {
+      expect(text).toContain(`"${node.stepNumber} - ${node.name}"`);
+    }
+    expect(text).toContain('"2.1.6.7 - 6C Pulse (10s)"');
   });
 
   test('quotes and angle brackets become Mermaid entities, not backslashes', () => {
@@ -210,7 +215,8 @@ describe('depth modes — spec section 8', () => {
     const text = toMermaid(graph, rules, { mode: { kind: 'depth', depth: 2 } });
     const main = [...graph.nodes.values()].find((n) => n.name === 'Pulse 1 - 6C');
     expect(main).toBeDefined();
-    expect(text).toContain(`${mermaidId(main!.uid)}[["Pulse 1 - 6C<br/>28 steps"]]`);
+    expect(main!.stepNumber).toBe('2.1');
+    expect(text).toContain(`${mermaidId(main!.uid)}[["2.1 - Pulse 1 - 6C<br/>28 steps"]]`);
     // ...not as an empty subgraph.
     expect(text).not.toContain(`subgraph ${mermaidId(main!.uid)}`);
   });

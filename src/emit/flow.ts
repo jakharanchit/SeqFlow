@@ -18,9 +18,13 @@ export const SIZE = {
   paddingX: 34,
   minWidth: 150,
   maxWidth: 300,
-  height: 52,
+  /**
+   * Three lines: the step number, the name over up to two lines, and the
+   * params. 52 before the number line was added, and already tight.
+   */
+  height: 66,
   /** Diamonds carry their text badly; give them room. */
-  decisionHeight: 74,
+  decisionHeight: 88,
   /** Space reserved inside a group for its title bar. */
   groupHeader: 30,
   groupPadding: 22,
@@ -28,6 +32,12 @@ export const SIZE = {
 
 export interface FlowNodeData extends Record<string, unknown> {
   label: string;
+  /**
+   * `2.1.6.7` — the address the file's own tooling uses. Empty on the root.
+   * Rendered as its own line above the name, and by the SVG exporter too, so
+   * a picture of the canvas can be cross-referenced against a test report.
+   */
+  stepNumber: string;
   /** Rule-file selected attributes, e.g. "power_supply_enable_output = TRUE". */
   params: string;
   element: string;
@@ -90,8 +100,10 @@ export const EDGE_COLOR: Record<string, string> = {
   goto: '#9a6bd0',
 };
 
-function measure(label: string, params: string): number {
-  const widest = Math.max(label.length, params.length * 0.9);
+function measure(label: string, params: string, stepNumber: string): number {
+  // The number is monospace and a third smaller, so it counts for less per
+  // character — but `2.1.6.11` on a 150px minimum still has to fit.
+  const widest = Math.max(label.length, params.length * 0.9, stepNumber.length * 0.85);
   const w = widest * SIZE.charWidth + SIZE.paddingX;
   return Math.round(Math.min(SIZE.maxWidth, Math.max(SIZE.minWidth, w)));
 }
@@ -170,6 +182,7 @@ export function toFlow(graph: Graph, rules: Rules, opts: FlowOptions = {}): Flow
       position: { x: 0, y: 0 }, // ELK fills these in
       data: {
         label: node.name === '' ? node.element : node.name,
+        stepNumber: node.stepNumber,
         params,
         element: node.element,
         kind: node.kind,
@@ -180,7 +193,7 @@ export function toFlow(graph: Graph, rules: Rules, opts: FlowOptions = {}): Flow
         ...(hidden === undefined ? {} : { collapsed: hidden }),
       },
       // Groups are resized by the layout pass; these are placeholders.
-      width: isGroup ? SIZE.minWidth : measure(node.name, params),
+      width: isGroup ? SIZE.minWidth : measure(node.name, params, node.stepNumber),
       height: isGroup ? SIZE.height : height,
       ...(node.parent === null ? {} : { parentId: node.parent, extent: 'parent' as const }),
       zIndex: isGroup ? -node.depth : 1,

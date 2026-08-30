@@ -364,7 +364,12 @@ export function toSvg(
       `<rect x="${round(g.ax)}" y="${round(g.ay)}" width="${g.width}" height="${g.height}" rx="8" fill="${p.group}" stroke="${p.groupLine}" stroke-width="1"/>`,
     );
     out.push(
-      `<text x="${round(g.ax + 11)}" y="${round(g.ay + 19)}" font-size="11" font-weight="600" letter-spacing="0.33" fill="${p.textFaint}">${esc(g.data.label.toUpperCase())}</text>`,
+      `<text x="${round(g.ax + 11)}" y="${round(g.ay + 19)}" font-size="11" font-weight="600" letter-spacing="0.33" fill="${p.textFaint}">${esc(
+        (g.data.stepNumber === ''
+          ? g.data.label
+          : `${g.data.stepNumber}  ${g.data.label}`
+        ).toUpperCase(),
+      )}</text>`,
     );
   }
 
@@ -416,10 +421,18 @@ export function toSvg(
 
     const lines = wrapText(node.data.label, node.width - 24, 2);
     const hasParams = node.data.params !== '';
-    // Centre the label block, leaving room for the params line beneath it.
-    const blockHeight = lines.length * 14 + (hasParams ? 12 : 0);
+    const hasNumber = node.data.stepNumber !== '';
+    // Centre the whole block: number line, name lines, params line. The export
+    // is a picture of the canvas, so it stacks them the same way.
+    const blockHeight = lines.length * 14 + (hasParams ? 12 : 0) + (hasNumber ? 11 : 0);
     let y = node.ay + node.height / 2 - blockHeight / 2 + 11;
     const cx = round(node.ax + node.width / 2);
+    if (hasNumber) {
+      out.push(
+        `<text x="${cx}" y="${round(y - 2)}" font-size="9" font-family="ui-monospace, Consolas, monospace" text-anchor="middle" fill="${p.textFaint}">${esc(node.data.stepNumber)}</text>`,
+      );
+      y += 11;
+    }
     for (const line of lines) {
       out.push(
         `<text x="${cx}" y="${round(y)}" font-size="11.5" font-weight="550" text-anchor="middle" fill="${p.text}">${esc(line)}</text>`,

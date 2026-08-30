@@ -94,8 +94,8 @@ describe('path sets', () => {
     const cyclic: Graph = {
       ...graph,
       nodes: new Map([
-        ['A', { uid: 'A', element: 'X', name: 'A', kind: 'action', shape: 'rect', parent: null, depth: 1, attrs: {} }],
-        ['B', { uid: 'B', element: 'X', name: 'B', kind: 'action', shape: 'rect', parent: null, depth: 1, attrs: {} }],
+        ['A', { uid: 'A', element: 'X', name: 'A', kind: 'action', shape: 'rect', parent: null, depth: 1, stepNumber: '', attrs: {} }],
+        ['B', { uid: 'B', element: 'X', name: 'B', kind: 'action', shape: 'rect', parent: null, depth: 1, stepNumber: '', attrs: {} }],
       ]),
       edges: [
         { src: 'A', dst: 'B', style: 'solid', reason: 'goto' },

@@ -18,10 +18,12 @@
  */
 
 import { pathLabel } from '../core/ancestry';
+import { StepNum } from './StepNum';
 import type { CriteriaAhead, Criterion } from '../core/criteria';
 import type { GraphDiff } from '../core/diff';
 import type { DurationReport, Offset } from '../core/duration';
 import type { LintResult } from '../core/lint';
+import { signalLabel, unnamedTags, type SignalNameFile } from '../core/signalNames';
 import type { SignalIndex, SignalRow } from '../core/signals';
 import { nodesFor } from '../core/signals';
 import type { Comparison, SimilarGroup } from '../core/similarity';
@@ -49,6 +51,15 @@ export interface DrawerProps {
   rules: Rules;
   /** The loaded file name. Names every export. */
   fileName: string;
+  /**
+   * Human names for the tags, when a dictionary has been dropped. Empty means
+   * every tag is shown exactly as the XML spells it, which is the default and
+   * the only honest answer without one — see `core/signalNames.ts`.
+   */
+  signalNames: SignalNameFile;
+  /** The dictionary's file name, or null when none is loaded. */
+  signalNamesFile: string | null;
+  onClearSignalNames: () => void;
   /** The canvas as it stands, for the image export. */
   nodes: readonly FlowNode[];
   edges: readonly FlowEdge[];
@@ -157,6 +168,9 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
     graph,
     rules,
     fileName,
+    signalNames,
+    signalNamesFile,
+    onClearSignalNames,
     nodes,
     edges,
     routes,
@@ -202,6 +216,13 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
   if (graph === null) return null;
 
   const uids = signal === null ? [] : [...nodesFor(index, signal)];
+  /* Tags the dictionary does not name. A half-complete dictionary has to
+     read as half-complete, or a file whose signals are spelled in two
+     styles looks like a file whose signals are spelled in two styles. */
+  const unnamed = unnamedTags(
+    rows.map((r) => r.signal),
+    signalNames.names,
+  );
 
   /** What every tab button needs to know: which is open, and how to switch. */
   const shared = { tab, open, onTab, onOpen };
@@ -268,6 +289,31 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
           {tab === 'signals' ? (
             <>
               <div className="drawer-list">
+                <div className="signal-names-note">
+                  {signalNamesFile === null ? (
+                    <span className="hint">
+                      Tags as the XML spells them. Drop a two-column
+                      <code> tag,name </code> .csv to show the plant&rsquo;s names — none is
+                      guessed, because <code>power_supply_voltage_setpoint</code> is called
+                      &ldquo;Power Supply Voltage Request&rdquo; and nothing in the file says so.
+                    </span>
+                  ) : (
+                    <span className="hint">
+                      Names from <b>{signalNamesFile}</b> —{' '}
+                      {rows.length - unnamed.length} of {rows.length} tags.
+                      {unnamed.length > 0 && ` ${unnamed.length} still shown as tags.`}{' '}
+                      <a
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          onClearSignalNames();
+                        }}
+                      >
+                        Clear
+                      </a>
+                    </span>
+                  )}
+                </div>
                 {rows.map((row) => (
                   <div
                     key={row.signal}
@@ -283,8 +329,19 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
                       }
                     }}
                   >
-                    <span className="signal-name">{row.signal}</span>
-                    <span className="signal-attrs">{row.attrs.join(', ')}</span>
+                    <span className="signal-name">
+                      {signalLabel(row.signal, signalNames.names)}
+                    </span>
+                    {/* The tag stays on the row even when it has a human name.
+                        The name is what a reader recognises; the tag is what
+                        the XML, the logs and the plant's own tooling say, and
+                        dropping it would make the two impossible to line up. */}
+                    <span className="signal-attrs">
+                      {signalNames.names.has(row.signal) && (
+                        <code className="signal-tag">{row.signal}</code>
+                      )}
+                      {row.attrs.join(', ')}
+                    </span>
                     <span className="signal-count">{row.count}</span>
                   </div>
                 ))}
@@ -301,6 +358,7 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
                     return (
                       <div key={uid} className="detail-row" onClick={() => onSelect(uid)}>
                         <span className={`dot kind-${node.kind}`} />
+                        <StepNum number={node.stepNumber} />
                         <span className="detail-name">
                           {node.name === '' ? node.element : node.name}
                         </span>
@@ -462,7 +520,10 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
                     <code className="warn-code">{w.code}</code>
                     <span className="warn-message">{w.message}</span>
                     {w.uid !== '' && graph.nodes.has(w.uid) && (
-                      <span className="detail-path">{pathLabel(graph, w.uid)}</span>
+                      <span className="detail-path">
+                        <StepNum number={graph.nodes.get(w.uid)?.stepNumber ?? ''} />
+                        {pathLabel(graph, w.uid)}
+                      </span>
                     )}
                   </div>
                 ))

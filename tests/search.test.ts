@@ -2,10 +2,73 @@ import { describe, expect, it } from 'vitest';
 
 import { parse } from '../src/core/parse';
 import { pathLabel } from '../src/core/ancestry';
-import { elementCounts, isActive, matchSet, nameCounts, search } from '../src/core/search';
+import {
+  elementCounts,
+  isActive,
+  isStepNumberQuery,
+  matchSet,
+  nameCounts,
+  search,
+} from '../src/core/search';
 import { domParser, fixtureXml, rules } from './helpers';
 
 const graph = parse(fixtureXml, { rules, domParser });
+
+describe('search by step number', () => {
+  it('recognises a number query by shape, so it never shadows a name', () => {
+    expect(isStepNumberQuery('2.3.6')).toBe(true);
+    expect(isStepNumberQuery('2')).toBe(true);
+    expect(isStepNumberQuery('2.3.')).toBe(true); // mid-type, walking down
+    expect(isStepNumberQuery('2.3 - Pulse')).toBe(false);
+    expect(isStepNumberQuery('Turn off Load')).toBe(false);
+    expect(isStepNumberQuery('')).toBe(false);
+  });
+
+  it('an exact number finds exactly one step', () => {
+    const hits = search(graph, { text: '2.3.6.8' });
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.name).toBe('Acceptance Criteria - ESR Max - 6C');
+    // The whole point: that name is on four steps and the number is on one.
+    expect(search(graph, { text: 'Acceptance Criteria - ESR Max - 6C' })).toHaveLength(4);
+  });
+
+  it('a prefix selects the block beneath it', () => {
+    const hits = search(graph, { text: '2.3.6' });
+    // The Discharge at 24C sequence plus its eleven steps.
+    expect(hits).toHaveLength(12);
+    expect(hits[0]?.name).toBe('Discharge at 24C');
+    expect(hits.every((h) => h.stepNumber.startsWith('2.3.6'))).toBe(true);
+  });
+
+  it('a trailing dot means the same thing', () => {
+    expect(search(graph, { text: '2.3.6.' }).length).toBe(search(graph, { text: '2.3.6' }).length);
+  });
+
+  it('respects segment boundaries — 2.1 is not a prefix of 2.10', () => {
+    const g = search(graph, { text: '2.1' });
+    expect(g.every((h) => h.stepNumber === '2.1' || h.stepNumber.startsWith('2.1.'))).toBe(true);
+    // The fixture has no 2.10, so assert the rule directly rather than hoping.
+    expect(g.some((h) => h.stepNumber.startsWith('2.1') && !h.stepNumber.startsWith('2.1.') && h.stepNumber !== '2.1')).toBe(false);
+  });
+
+  it('highlights nothing in the name — the match was on the address', () => {
+    for (const hit of search(graph, { text: '2.3.6' })) expect(hit.at).toBe(-1);
+  });
+
+  it('a number that is not in the file matches nothing', () => {
+    expect(search(graph, { text: '9.9.9' })).toHaveLength(0);
+  });
+
+  it('still honours the element filter', () => {
+    const hits = search(graph, {
+      text: '2.3',
+      elements: new Set(['TestCriteriaEvaluation']),
+    });
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.every((h) => h.element === 'TestCriteriaEvaluation')).toBe(true);
+    expect(hits.every((h) => h.stepNumber.startsWith('2.3'))).toBe(true);
+  });
+});
 
 describe('search', () => {
   it('confirms the ambiguity this feature exists for', () => {

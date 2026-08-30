@@ -16,6 +16,7 @@
 import { useState } from 'react';
 
 import { pathLabel } from '../core/ancestry';
+import { StepNum } from './StepNum';
 import type { Finding, FindingCode, LintResult } from '../core/lint';
 import type { Graph } from '../core/types';
 
@@ -113,6 +114,7 @@ export function Findings({
             }}
           >
             <code className="finding-code">{LABELS[finding.code]}</code>
+            <StepNum number={graph.nodes.get(finding.uid)?.stepNumber ?? ''} />
             <span className="finding-name">
               {graph.nodes.get(finding.uid)?.name || finding.uid}
             </span>
@@ -198,6 +200,7 @@ export function Findings({
                   return (
                     <div key={uid} className="detail-row" onClick={() => onReveal(uid)}>
                       <span className={`dot kind-${node.kind}`} />
+                      <StepNum number={node.stepNumber} />
                       <span className="detail-name">
                         {node.name === '' ? node.element : node.name}
                       </span>

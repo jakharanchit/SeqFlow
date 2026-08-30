@@ -1,0 +1,146 @@
+HLB Battery ESR	
+    1 - Initialize	
+        1.1 - Set Status	Set "Test Status" to "Initializing".
+        1.2 - Start Recording	Create New File
+        1.3 - Start Periodic Log	Start Periodic Log for "ESR Signals" as "ESR Signals" at every "00:00:01".
+    2 - Main	
+        2.1 - Pulse 1 - 6C	
+            2.1.1 - Check Start Voltage	Evaluate Once. (True: Go to "2.1.3 - Battery Temperature Check", False: Go to "2.1.2 - Charge to Desired Voltage")
+                2.1.1.1 - Above Minimum Start Voltage	Is "PackVoltage" >= 53.2?
+            2.1.2 - Charge to Desired Voltage	
+                2.1.2.1 - Charging Status Message	Set "Test Status" to "Charging".
+                2.1.2.2 - Set Power Supply to Charge	
+                    2.1.2.2.1 - Set Setpoint	Set "Power Supply Current Limit" to 8.8
+                    2.1.2.2.2 - Set Voltage	Set "Power Supply Voltage Request" to 53.2
+                    2.1.2.2.3 - Turn Power Supply On	Set "Power Supply Enable Output" to ON
+                2.1.2.3 - Wait for charging to begin	Wait 00:00:10.000
+                2.1.2.4 - Charge Until Cutoff Current is Reached	Evaluate every 00:00:01, until True, or times out after 00:10:00. (True: Continue, Timeout: Continue)
+                    2.1.2.4.1 - Cutoff Current	Is "Power Supply Current" < 0.3?
+                2.1.2.5 - Turn off Power Supply	Set "Power Supply Enable Output" to OFF
+            2.1.3 - Battery Temperature Check	
+                2.1.3.1 - Cooling Status Message	Set "Test Status" to "Cooling".
+                2.1.3.2 - Temperature Check	Evaluate every 00:00:01, until True, or times out after 00:10:00. (True: Continue, Timeout: Continue)
+                    2.1.3.2.1 - Below Maximum Allowable Temp?	Is "Pack Temp max" < 35?
+            2.1.4 - Acceptance Criteria - Pack OCV	
+            2.1.5 - Acceptance Criteria - Individual Cell OCV	
+            2.1.6 - Discharge at 6C	
+                2.1.6.1 - Discharge Status Message	Set "Test Status" to "Discharging".
+                2.1.6.2 - Start Recording Pulse Data	Start Periodic Log for "ESR Pulse" as "ESR Pulse 1 - 6C" at every "00:00:00".
+                2.1.6.3 - 5s pause for Data Start	Wait 00:00:05.000
+                2.1.6.4 - Set Load State	Set "Operation Mode" to "2: Constant Current"
+                2.1.6.5 - Set Load Current to 6C - 26.4	Set "Load Current Request" to 26.4
+                2.1.6.6 - Turn on Load	Set "Electronic Load Enable Input" to ON
+                2.1.6.7 - 6C Pulse (10s)	Wait 00:00:10.000
+                2.1.6.8 - Acceptance Criteria - ESR Max - 6C	
+                2.1.6.9 - Turn off Load	Set "Electronic Load Enable Input" to OFF
+                2.1.6.10 - Wait	Wait 00:00:05.000
+                2.1.6.11 - Stop Recording Pulse Data	Stop Periodic Log for "ESR Pulse".
+            2.1.7 - Acceptance Criteria - Temperature Max	
+        2.2 - Pulse 2 - 12C	
+            2.2.1 - Check Start Voltage	Evaluate Once. (True: Go to "2.2.3 - Battery Temperature Check", False: Go to "2.2.2 - Charge to Desired Voltage")
+                2.2.1.1 - Above Minimum Start Voltage	Is "PackVoltage" >= 53.2?
+            2.2.2 - Charge to Desired Voltage	
+                2.2.2.1 - Charging Status Message	Set "Test Status" to "Charging".
+                2.2.2.2 - Set Power Supply to Charge	
+                    2.2.2.2.1 - Set Setpoint	Set "Power Supply Current Limit" to 8.8
+                    2.2.2.2.2 - Set Voltage	Set "Power Supply Voltage Request" to 53.2
+                    2.2.2.2.3 - Turn Power Supply On	Set "Power Supply Enable Output" to ON
+                2.2.2.3 - Wait for charging to begin	Wait 00:00:10.000
+                2.2.2.4 - Charge Until Cutoff Current is Reached	Evaluate every 00:00:01, until True, or times out after 00:10:00. (True: Continue, Timeout: Continue)
+                    2.2.2.4.1 - Cutoff Current	Is "Power Supply Current" < 0.3?
+                2.2.2.5 - Turn off Power Supply	Set "Power Supply Enable Output" to OFF
+            2.2.3 - Battery Temperature Check	
+                2.2.3.1 - Cooling Status Message	Set "Test Status" to "Cooling".
+                2.2.3.2 - Temperature Check	Evaluate every 00:00:01, until True, or times out after 00:10:00. (True: Continue, Timeout: Continue)
+                    2.2.3.2.1 - Below Maximum Allowable Temp?	Is "Pack Temp max" < 35?
+            2.2.4 - Acceptance Criteria - Pack OCV	
+            2.2.5 - Acceptance Criteria - Individual Cell OCV	
+            2.2.6 - Discharge at 12C	
+                2.2.6.1 - Discharge Status Message	Set "Test Status" to "Discharging".
+                2.2.6.2 - Start Recording Pulse Data	Start Periodic Log for "ESR Pulse" as "ESR Pulse 2 - 12C" at every "00:00:00".
+                2.2.6.3 - 5s pause for Data Start	Wait 00:00:05.000
+                2.2.6.4 - Set Load State	Set "Operation Mode" to "2: Constant Current"
+                2.2.6.5 - Set Load Current to 12C - 52.8	Set "Load Current Request" to 52.8
+                2.2.6.6 - Turn on Load	Set "Electronic Load Enable Input" to ON
+                2.2.6.7 - 12C Pulse (10s)	Wait 00:00:10.000
+                2.2.6.8 - Acceptance Criteria - ESR Max - 6C	
+                2.2.6.9 - Turn off Load	Set "Electronic Load Enable Input" to OFF
+                2.2.6.10 - Wait	Wait 00:00:05.000
+                2.2.6.11 - Stop Recording Pulse Data	Stop Periodic Log for "ESR Pulse".
+            2.2.7 - Acceptance Criteria - Temperature Max	
+        2.3 - Pulse 3 - 24C	
+            2.3.1 - Check Start Voltage	Evaluate Once. (True: Go to "2.3.3 - Battery Temperature Check", False: Go to "2.3.2 - Charge to Desired Voltage")
+                2.3.1.1 - Above Minimum Start Voltage	Is "PackVoltage" >= 53.2?
+            2.3.2 - Charge to Desired Voltage	
+                2.3.2.1 - Charging Status Message	Set "Test Status" to "Charging".
+                2.3.2.2 - Set Power Supply to Charge	
+                    2.3.2.2.1 - Set Setpoint	Set "Power Supply Current Limit" to 8.8
+                    2.3.2.2.2 - Set Voltage	Set "Power Supply Voltage Request" to 53.2
+                    2.3.2.2.3 - Turn Power Supply On	Set "Power Supply Enable Output" to ON
+                2.3.2.3 - Wait for charging to begin	Wait 00:00:10.000
+                2.3.2.4 - Charge Until Cutoff Current is Reached	Evaluate every 00:00:01, until True, or times out after 00:10:00. (True: Continue, Timeout: Continue)
+                    2.3.2.4.1 - Cutoff Current	Is "Power Supply Current" < 0.3?
+                2.3.2.5 - Turn off Power Supply	Set "Power Supply Enable Output" to OFF
+            2.3.3 - Battery Temperature Check	
+                2.3.3.1 - Cooling Status Message	Set "Test Status" to "Cooling".
+                2.3.3.2 - Temperature Check	Evaluate every 00:00:01, until True, or times out after 00:10:00. (True: Continue, Timeout: Continue)
+                    2.3.3.2.1 - Below Maximum Allowable Temp?	Is "Pack Temp max" < 35?
+            2.3.4 - Acceptance Criteria - Pack OCV	
+            2.3.5 - Acceptance Criteria - Individual Cell OCV	
+            2.3.6 - Discharge at 24C	
+                2.3.6.1 - Discharge Status Message	Set "Test Status" to "Discharging".
+                2.3.6.2 - Start Recording Pulse Data	Start Periodic Log for "ESR Pulse" as "ESR Pulse 3 - 24C" at every "00:00:00".
+                2.3.6.3 - 5s pause for Data Start	Wait 00:00:05.000
+                2.3.6.4 - Set Load State	Set "Operation Mode" to "2: Constant Current"
+                2.3.6.5 - Set Load Current to 24C - 105.6	Set "Load Current Request" to 105.6
+                2.3.6.6 - Turn on Load	Set "Electronic Load Enable Input" to ON
+                2.3.6.7 - 24C Pulse (10s)	Wait 00:00:10.000
+                2.3.6.8 - Acceptance Criteria - ESR Max - 6C	
+                2.3.6.9 - Turn off Load	Set "Electronic Load Enable Input" to OFF
+                2.3.6.10 - Wait	Wait 00:00:05.000
+                2.3.6.11 - Stop Recording Pulse Data	Stop Periodic Log for "ESR Pulse".
+            2.3.7 - Acceptance Criteria - Temperature Max	
+        2.4 - Pulse 4 - 36C	
+            2.4.1 - Check Start Voltage	Evaluate Once. (True: Go to "2.4.3 - Battery Temperature Check", False: Go to "2.4.2 - Charge to Desired Voltage")
+                2.4.1.1 - Above Minimum Start Voltage	Is "PackVoltage" >= 53.2?
+            2.4.2 - Charge to Desired Voltage	
+                2.4.2.1 - Charging Status Message	Set "Test Status" to "Charging".
+                2.4.2.2 - Set Power Supply to Charge	
+                    2.4.2.2.1 - Set Setpoint	Set "Power Supply Current Limit" to 8.8
+                    2.4.2.2.2 - Set Voltage	Set "Power Supply Voltage Request" to 53.2
+                    2.4.2.2.3 - Turn Power Supply On	Set "Power Supply Enable Output" to ON
+                2.4.2.3 - Wait for charging to begin	Wait 00:00:10.000
+                2.4.2.4 - Charge Until Cutoff Current is Reached	Evaluate every 00:00:01, until True, or times out after 00:10:00. (True: Continue, Timeout: Continue)
+                    2.4.2.4.1 - Cutoff Current	Is "Power Supply Current" < 0.3?
+                2.4.2.5 - Turn off Power Supply	Set "Power Supply Enable Output" to OFF
+            2.4.3 - Battery Temperature Check	
+                2.4.3.1 - Cooling Status Message	Set "Test Status" to "Cooling".
+                2.4.3.2 - Temperature Check	Evaluate every 00:00:01, until True, or times out after 00:10:00. (True: Continue, Timeout: Continue)
+                    2.4.3.2.1 - Below Maximum Allowable Temp?	Is "Pack Temp max" < 35?
+            2.4.4 - Acceptance Criteria - Pack OCV	
+            2.4.5 - Acceptance Criteria - Individual Cell OCV	
+            2.4.6 - Discharge at 36C	
+                2.4.6.1 - Discharge Status Message	Set "Test Status" to "Discharging".
+                2.4.6.2 - Start Recording Pulse Data	Start Periodic Log for "ESR Pulse" as "ESR Pulse 4 - 36C" at every "00:00:00".
+                2.4.6.3 - 5s pause for Data Start	Wait 00:00:05.000
+                2.4.6.4 - Set Load State	Set "Operation Mode" to "2: Constant Current"
+                2.4.6.5 - Set Load Current to 36C - 158.4	Set "Load Current Request" to 158.4
+                2.4.6.6 - Turn on Load	Set "Electronic Load Enable Input" to ON
+                2.4.6.7 - 36C Pulse (10s)	Wait 00:00:10.000
+                2.4.6.8 - Acceptance Criteria - ESR Max - 6C	
+                2.4.6.9 - Turn off Load	Set "Electronic Load Enable Input" to OFF
+                2.4.6.10 - Wait	Wait 00:00:05.000
+                2.4.6.11 - Stop Recording Pulse Data	Stop Periodic Log for "ESR Pulse".
+            2.4.7 - Acceptance Criteria - Temperature Max	
+        2.5 - All Pulses Passed	Go To "3.2 - Complete Sequence"
+    3 - Shutdown	
+        3.1 - Abort Sequence	
+            3.1.1 - Turn off Load	Set "Electronic Load Enable Input" to OFF
+            3.1.2 - Set Status	Set "Test Status" to "Test Aborted".
+            3.1.3 - Play Status Tone	
+            3.1.4 - Go To	Go To "3.3 - Stop Recording"
+        3.2 - Complete Sequence	
+            3.2.1 - Set Status	Set "Test Status" to "Test Complete".
+            3.2.2 - Play Status Tone	
+        3.3 - Stop Recording	Stop Recording Data
+Abort	

@@ -55,6 +55,24 @@ export interface NodeDiff {
   kind: ChangeKind;
   /** Display name, preferring the new revision's. */
   name: string;
+  /** Step number in the revision this record belongs to. */
+  stepNumber: string;
+  /**
+   * The number this step had in the baseline, when that differs from
+   * `stepNumber`. Empty otherwise, and always empty on an addition.
+   *
+   * Inserting one step renumbers every step after it, so this is what lets the
+   * change list say `2.1.6 (was 2.1.5)` instead of leaving a reader to work out
+   * why an address they wrote down last week now points somewhere else.
+   *
+   * A renumbered *descendant* is deliberately not promoted to `changed` on
+   * this account. Inserting one sequence at the top of Main renumbers thirty
+   * steps beneath it that are otherwise untouched, and reporting all thirty is
+   * the same failure "moved is rank, not raw index" exists to avoid. The moved
+   * parent is what explains the renumber; this field annotates the rows that
+   * are already being reported.
+   */
+  wasStepNumber: string;
   element: string;
   /** Attribute changes, sorted by name. Empty for added and removed. */
   attrs: AttrChange[];
@@ -190,6 +208,9 @@ export function diffGraphs(base: Graph, next: Graph, matcher: Matcher = BY_UID):
         uid: node.uid,
         kind: 'removed',
         name: displayName(node),
+        // A ghost keeps the number it had: it is a fact about the baseline.
+        stepNumber: node.stepNumber,
+        wasStepNumber: '',
         element: node.element,
         attrs: [],
         moved: false,
@@ -214,6 +235,8 @@ export function diffGraphs(base: Graph, next: Graph, matcher: Matcher = BY_UID):
       uid: to,
       kind: 'changed',
       name: displayName(other),
+      stepNumber: other.stepNumber,
+      wasStepNumber: node.stepNumber === other.stepNumber ? '' : node.stepNumber,
       element: other.element,
       attrs,
       moved,
@@ -230,6 +253,8 @@ export function diffGraphs(base: Graph, next: Graph, matcher: Matcher = BY_UID):
       uid: node.uid,
       kind: 'added',
       name: displayName(node),
+      stepNumber: node.stepNumber,
+      wasStepNumber: '',
       element: node.element,
       attrs: [],
       moved: false,

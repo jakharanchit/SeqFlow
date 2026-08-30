@@ -274,6 +274,22 @@ button.tool:disabled {
   overflow: hidden;
 }
 
+/*
+ * The step number, on its own line above the name. Monospace and dim: it is an
+ * address, not a label, and it must not compete with the name for attention —
+ * but it has to be selectable at a glance when someone is holding a test report
+ * that failed at 2.3.6.8.
+ */
+.rf-node .num {
+  font-family: var(--mono);
+  font-size: 9px;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  color: var(--text-faint);
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
 .rf-node .label {
   font-weight: 550;
   line-height: 1.25;
@@ -351,6 +367,13 @@ button.tool:disabled {
   background: rgba(255, 255, 255, 0.018);
 }
 
+.rf-group .title .num {
+  font-family: var(--mono);
+  letter-spacing: 0;
+  opacity: 0.72;
+  margin-right: 6px;
+}
+
 .rf-group .title {
   position: absolute;
   top: 7px;
@@ -402,6 +425,18 @@ button.tool:disabled {
   border: 1px solid var(--line);
   color: var(--text-dim);
   margin-right: 6px;
+}
+
+/*
+ * The step number in the inspector header. Monospace and not uppercased —
+ * `2.1.6.7` is an address, and letter-spacing an address makes it harder to
+ * read back, not easier.
+ */
+.chip.step {
+  font-family: var(--mono);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-dim);
 }
 
 .chip.kind-action {
@@ -1097,6 +1132,7 @@ button.tool.on {
  * this is purely what gets painted.
  */
 .canvas.far .rf-node .label,
+.canvas.far .rf-node .num,
 .canvas.far .rf-node .params,
 .canvas.far .react-flow__edge-text,
 .canvas.far .react-flow__edge-textbg {
@@ -1873,4 +1909,74 @@ table.diff tr.odd-row .diff-attr {
 .react-flow__edge.diff-removed .react-flow__edge-path {
   stroke-dasharray: 3 5;
   opacity: 0.45;
+}
+
+/*
+ * The step number in front of a name, in every list: the outline, the search
+ * results, the findings, the criteria table, the signal drawer and the diff.
+ *
+ * Monospace, dim, and never wrapped or truncated. Its whole job is to be
+ * matched character-for-character against a number someone is holding — a test
+ * report, a review comment, the tool's own text export — so an ellipsis in the
+ * middle of it would defeat the point. Names are what get truncated; the
+ * number is only ever eight characters and is what disambiguates the five
+ * steps called "Turn off Load".
+ */
+.step-num {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  margin-right: 7px;
+}
+
+.row-name + .row-count,
+.step-num + .row-name {
+  min-width: 0;
+}
+
+/* `2.1.6 was 2.1.5` in the diff list. Faint: it is a footnote on the row. */
+.was-num {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  margin-left: 6px;
+}
+
+/*
+ * The signal dictionary, where one is loaded.
+ *
+ * The tag and its human name are always shown together. The name is what a
+ * reader recognises; the tag is what the XML, the logs and the plant's own
+ * tooling say. Replacing one with the other makes them impossible to line up,
+ * which is the whole reason for having both on screen.
+ */
+.gloss {
+  margin-left: 8px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.signal-tag {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--text-faint);
+  margin-right: 8px;
+}
+
+.signal-names-note {
+  padding: 8px 12px 10px;
+  border-bottom: 1px solid var(--line);
+  line-height: 1.5;
+}
+
+.signal-names-note code {
+  font-family: var(--mono);
+  color: var(--text-dim);
+}
+
+.signal-names-note a {
+  color: var(--accent);
+  text-decoration: none;
 }

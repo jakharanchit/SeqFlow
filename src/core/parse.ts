@@ -14,6 +14,7 @@
  *   4.4  Fall-through from the last step in a sequence walks up the tree.
  */
 
+import { stepNumbers } from './numbering';
 import {
   childElements,
   firstLeaf,
@@ -184,6 +185,10 @@ function walkNodes(roots: Element[], rules: Rules): WalkResult {
       shape: shapeOf(el, rules),
       parent,
       depth,
+      // Filled in once the whole tree is known — a number is a fact about a
+      // node's position among its siblings, which this walk has not finished
+      // establishing yet. See `applyStepNumbers` below.
+      stepNumber: '',
       attrs: attrsOf(el),
       ...(childAttrs === undefined ? {} : { childAttrs }),
     };
@@ -366,7 +371,7 @@ export function parse(xml: string, opts: ParseOptions): Graph {
   const index = indexElements(doc, rules);
   const edges = buildEdges(nodes, index, rules, warnings);
 
-  return {
+  const graph: Graph = {
     root: rootUid,
     entry: uidOf(entryEl),
     nodes,
@@ -374,4 +379,21 @@ export function parse(xml: string, opts: ParseOptions): Graph {
     containers,
     warnings,
   };
+  applyStepNumbers(graph);
+  return graph;
+}
+
+/**
+ * Write each node's step number, now that the whole tree exists.
+ *
+ * This mutates the nodes the walk above just built and nothing else — the only
+ * graph it can reach is the one being returned. Kept out of `walkNodes` so the
+ * numbering stays a pure function of a finished `Graph` and can be tested,
+ * and re-derived, without a parser.
+ */
+function applyStepNumbers(graph: Graph): void {
+  for (const [uid, number] of stepNumbers(graph)) {
+    const node = graph.nodes.get(uid);
+    if (node !== undefined) node.stepNumber = number;
+  }
 }

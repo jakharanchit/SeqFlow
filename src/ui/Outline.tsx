@@ -16,7 +16,8 @@
 
 import { useMemo, useState } from 'react';
 
-import { displayName } from '../core/ancestry';
+import { displayName, numberedName } from '../core/ancestry';
+import { StepNum } from './StepNum';
 import type { ElementCount, SearchResult } from '../core/search';
 import type { Graph, SeqNode } from '../core/types';
 
@@ -171,7 +172,7 @@ export function Outline({
           <input
             type="search"
             value={text}
-            placeholder="Search step names…"
+            placeholder="Search names or a step number…"
             aria-label="Search step names"
             onChange={(e) => onTextChange(e.target.value)}
           />
@@ -243,6 +244,7 @@ export function Outline({
               >
                 <div className="result-name">
                   <span className={`dot kind-${r.kind}`} />
+                  <StepNum number={r.stepNumber} />
                   <Marked name={r.name} at={r.at} length={needle.length} />
                 </div>
                 {/* The path is what disambiguates five "Turn off Load"s. */}
@@ -298,7 +300,11 @@ export function Outline({
                   <span className={`dot kind-${node.kind}`} />
                 )}
 
-                <span className="row-name" title={`${node.element} — ${displayName(node)}`}>
+                <StepNum number={node.stepNumber} />
+                <span
+                  className="row-name"
+                  title={`${node.element} — ${numberedName(node)}`}
+                >
                   {displayName(node)}
                 </span>
 

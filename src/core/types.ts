@@ -36,6 +36,13 @@ export interface SeqNode {
   /** Nesting depth from the document root. */
   depth: number;
   /**
+   * Hierarchical step number — `2.1.6.7`. The address the authoring tool's own
+   * text export uses, and the only one that survives the file's colliding
+   * names. `''` on the document root and on anything orphaned. Derived from
+   * document order alone; see `numbering.ts`.
+   */
+  stepNumber: string;
+  /**
    * Full attribute set, verbatim. The parser does not decide what matters;
    * the inspector panel renders all of it.
    */

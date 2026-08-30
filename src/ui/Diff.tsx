@@ -15,6 +15,7 @@
 import { useRef, useState } from 'react';
 
 import { pathLabel } from '../core/ancestry';
+import { StepNum } from './StepNum';
 import type { GraphDiff, NodeDiff } from '../core/diff';
 import type { Graph } from '../core/types';
 
@@ -142,7 +143,15 @@ export function Diff({
                 {KIND_LABEL[node.kind]}
                 {node.moved && node.kind === 'changed' && node.attrs.length === 0 ? ' · moved' : ''}
               </code>
-              <span className="finding-name">{node.name}</span>
+              <StepNum number={node.stepNumber} />
+              <span className="finding-name">
+                {node.name}
+                {/* Inserting one step renumbers everything after it. Saying so
+                    is cheaper than letting a reader rediscover it. */}
+                {node.wasStepNumber !== '' && (
+                  <span className="was-num"> was {node.wasStepNumber}</span>
+                )}
+              </span>
               <span className="detail-path">
                 {graph.nodes.has(node.uid) ? pathLabel(graph, node.uid) : node.element}
               </span>

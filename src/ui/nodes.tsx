@@ -26,13 +26,17 @@ function StepNode({ data, selected }: Props): React.JSX.Element {
     .filter(Boolean)
     .join(' ');
 
+  // The number first in the tooltip too: it is what someone reading a test
+  // report has in hand, and the tooltip is where a truncated label recovers.
+  const named = data.stepNumber === '' ? data.label : `${data.stepNumber} - ${data.label}`;
   const title = isCollapsed
-    ? `${data.label} — ${data.collapsed ?? 0} steps hidden. Double-click to expand.`
-    : `${data.element} — ${data.label}`;
+    ? `${named} — ${data.collapsed ?? 0} steps hidden. Double-click to expand.`
+    : `${data.element} — ${named}`;
 
   return (
     <div className={classes} title={title}>
       <Handle type="target" position={Position.Top} isConnectable={false} />
+      {data.stepNumber !== '' && <div className="num">{data.stepNumber}</div>}
       <div className="label">{data.label}</div>
       {data.params !== '' && <div className="params">{data.params}</div>}
       <Handle type="source" position={Position.Bottom} isConnectable={false} />
@@ -47,9 +51,12 @@ function GroupNode({ data, selected }: Props): React.JSX.Element {
       // Semantic zoom drops the titles of deeply nested sequences: far out
       // there is no room for 26 of them, and only the outer ones orient you.
       data-depth={data.depth}
-      title={`${data.label} — double-click to collapse`}
+      title={`${data.stepNumber === '' ? data.label : `${data.stepNumber} - ${data.label}`} — double-click to collapse`}
     >
-      <div className="title">{data.label}</div>
+      <div className="title">
+        {data.stepNumber !== '' && <span className="num">{data.stepNumber}</span>}
+        {data.label}
+      </div>
     </div>
   );
 }

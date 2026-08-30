@@ -7,9 +7,11 @@
  * whole point of the panel.
  */
 
+import { numberedName } from '../core/ancestry';
 import type { CriteriaAhead } from '../core/criteria';
 import type { ChangeKind } from '../core/diff';
 import { humanRange, type Offset } from '../core/duration';
+import { type SignalNames } from '../core/signalNames';
 import type { Graph, SeqNode } from '../core/types';
 
 export interface InspectorProps {
@@ -24,19 +26,42 @@ export interface InspectorProps {
   offset?: Offset | null;
   /** What a revision diff says about it, when one is loaded. */
   change?: ChangeKind | null;
+  /** Human names for tags, when a dictionary is loaded. */
+  signalNames?: SignalNames;
 }
 
-function AttrTable({ attrs }: { attrs: Record<string, string> }): React.JSX.Element {
+/**
+ * Every attribute verbatim — the parser does not decide what matters.
+ *
+ * A value that the signal dictionary names is annotated with that name rather
+ * than replaced by it. The tag is what the XML, the logs and the plant's own
+ * tooling say; the name is what a reader recognises. Showing one without the
+ * other makes the two impossible to line up.
+ *
+ * The lookup is on the *value*, never on the attribute — which attributes hold
+ * a tag is rule-file knowledge and this table has none of it.
+ */
+function AttrTable({
+  attrs,
+  signalNames,
+}: {
+  attrs: Record<string, string>;
+  signalNames: SignalNames | undefined;
+}): React.JSX.Element {
   const keys = Object.keys(attrs).sort();
   return (
     <table className="attrs">
       <tbody>
         {keys.map((k) => {
           const v = attrs[k] ?? '';
+          const named = v === '' ? undefined : signalNames?.get(v);
           return (
             <tr key={k}>
               <td className="k">{k}</td>
-              <td className={v === '' ? 'v empty' : 'v'}>{v === '' ? 'empty' : v}</td>
+              <td className={v === '' ? 'v empty' : 'v'}>
+                {v === '' ? 'empty' : v}
+                {named !== undefined && <span className="gloss">{named}</span>}
+              </td>
             </tr>
           );
         })}
@@ -79,7 +104,7 @@ function Ancestry({
                 onSelect(c.uid);
               }}
             >
-              {c.name}
+              {c.stepNumber === '' ? c.name : `${c.stepNumber} ${c.name}`}
             </a>
           </span>
         ))}
@@ -96,6 +121,7 @@ export function Inspector({
   ahead = null,
   offset = null,
   change = null,
+  signalNames,
 }: InspectorProps): React.JSX.Element {
   if (graph === null) {
     return (
@@ -188,6 +214,7 @@ export function Inspector({
     <aside className="inspector">
       <h2 className="insp-title">{node.name === '' ? node.element : node.name}</h2>
       <div className="insp-sub">
+        {node.stepNumber !== '' && <span className="chip step">{node.stepNumber}</span>}
         <span className={`chip kind-${node.kind}`}>{node.kind}</span>
         {node.element}
         {change !== null && change !== 'same' && (
@@ -230,7 +257,7 @@ export function Inspector({
         <div className="section" key={element}>
           <h3>{element}</h3>
           {rows.map((row, i) => (
-            <AttrTable key={i} attrs={row} />
+            <AttrTable key={i} attrs={row} signalNames={signalNames} />
           ))}
         </div>
       ))}
@@ -283,7 +310,7 @@ export function Inspector({
 
       <div className="section">
         <h3>Attributes</h3>
-        <AttrTable attrs={node.attrs} />
+        <AttrTable attrs={node.attrs} signalNames={signalNames} />
       </div>
 
       {outbound.length > 0 && (
@@ -303,7 +330,13 @@ export function Inspector({
                         onSelect(e.dst);
                       }}
                     >
-                      {graph.nodes.get(e.dst)?.name ?? e.dst}
+                      {(() => {
+                        // `3.3 - Stop Recording` — the notation the authoring
+                        // tool's own export uses to quote a jump target, so a
+                        // reader can match the two without translating.
+                        const dst = graph.nodes.get(e.dst);
+                        return dst === undefined ? e.dst : numberedName(dst);
+                      })()}
                     </a>
                   </td>
                 </tr>

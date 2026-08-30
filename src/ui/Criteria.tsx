@@ -15,6 +15,7 @@
 
 import type { CriteriaAhead, Criterion } from '../core/criteria';
 import { pathLabel } from '../core/ancestry';
+import { StepNum } from './StepNum';
 import type { Graph } from '../core/types';
 
 export interface CriteriaProps {
@@ -159,6 +160,7 @@ export function Criteria({
               return (
                 <div key={uid} className="detail-row" onClick={() => onSelect(uid)}>
                   <span className={`dot kind-${node.kind}`} />
+                  <StepNum number={node.stepNumber} />
                   <span className="detail-name">
                     {node.name === '' ? node.element : node.name}
                   </span>

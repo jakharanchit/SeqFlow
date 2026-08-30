@@ -57,9 +57,12 @@ function countTags(text: string, tag: string): number {
 describe('dimensions', () => {
   test('grouped matches the on-screen layout', () => {
     const svg = toSvg(grouped.nodes, grouped.edges, { routes: grouped.routes, padding: 0 });
-    // PHASE3-TASKS names 975 x 8886 for this fixture.
+    // PHASE3-TASKS named 975 x 8886 for this fixture. It is 975 x 10356 since
+    // step numbers took a line inside every node box — the width is unchanged
+    // because `2.1.6.11` is narrower than every name it sits above, and the
+    // height is 107 leaves × the 14 px the line costs.
     expect(svg.width).toBe(975);
-    expect(svg.height).toBe(8886);
+    expect(svg.height).toBe(10356);
 
     // That is the extent from ELK's origin, which is 22 px left and 52 px
     // above the topmost node — the outer group's padding. `graphBounds`
@@ -123,7 +126,11 @@ describe('well-formedness', () => {
       found.add(texts.item(i)?.textContent ?? '');
     }
     expect(found.has('Stop Recording')).toBe(true);
-    expect(found.has('INITIALIZE')).toBe(true);
+    // A group title carries its number ahead of the name, same as a step.
+    expect(found.has('1  INITIALIZE')).toBe(true);
+    // And the number is its own text element, so it can be searched for in
+    // the exported file rather than only read off the picture.
+    expect(found.has('3.3')).toBe(true);
   });
 
   test('every node in the graph is drawn', () => {

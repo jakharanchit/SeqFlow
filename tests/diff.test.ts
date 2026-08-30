@@ -219,6 +219,61 @@ describe('a moved step', () => {
     expect(diff.counts.edgesAdded).toBeGreaterThan(0);
     expect(diff.counts.edgesRemoved).toBeGreaterThan(0);
   });
+
+  it('says which number each step used to carry', () => {
+    // 1.1 and 1.2 traded places. Without this the change list says two steps
+    // moved and leaves a reader holding "1.1" to work out which one it is now.
+    const swapped = diff.nodes.map((n) => [n.name, n.wasStepNumber, n.stepNumber]);
+    expect(swapped).toEqual(
+      expect.arrayContaining([
+        ['Set Status', '1.1', '1.2'],
+        ['Start Recording', '1.2', '1.1'],
+      ]),
+    );
+  });
+});
+
+describe('step numbers across a revision', () => {
+  it('a ghost keeps the number it had in the baseline', () => {
+    const next = revise((xml) => xml.replace(tagFor(FIRST_STATUS), ''));
+    const diff = diffGraphs(base, next);
+    const ghost = diff.nodes.find((n) => n.kind === 'removed')!;
+    expect(ghost.uid).toBe(FIRST_STATUS);
+    expect(ghost.stepNumber).toBe('1.1');
+    // And it carries that number onto the canvas, where the ghost is drawn.
+    expect(mergedGraph(base, next, diff).nodes.get(FIRST_STATUS)?.stepNumber).toBe('1.1');
+  });
+
+  it('an addition has no previous number to report', () => {
+    const next = revise((xml) =>
+      xml.replace(
+        tagFor(FIRST_STATUS),
+        `${tagFor(FIRST_STATUS)}<SetStatus logCompletion="TRUE" logStart="FALSE" name="New Step" status="Extra" tag="test_status" timeoutSeconds="0" uid="AAAAAAAA-0000-0000-0000-00000000000A"/>`,
+      ),
+    );
+    const diff = diffGraphs(base, next);
+    expect(diff.nodes[0]!.stepNumber).toBe('1.2');
+    expect(diff.nodes[0]!.wasStepNumber).toBe('');
+  });
+
+  it('does not report the thirty steps an insertion renumbers beneath it', () => {
+    // Inserting a step at the top of Initialize shifts the number of every
+    // step after it in that sequence — but their rank among the survivors is
+    // unchanged, so nothing is reported moved. That is deliberate: reporting
+    // every renumbered step is the failure "moved is rank, not raw index"
+    // exists to avoid, and it would bury the one insertion.
+    const next = revise((xml) =>
+      xml.replace(
+        tagFor(FIRST_STATUS),
+        `<SetStatus logCompletion="TRUE" logStart="FALSE" name="New First" status="Extra" tag="test_status" timeoutSeconds="0" uid="AAAAAAAA-0000-0000-0000-00000000000B"/>${tagFor(FIRST_STATUS)}`,
+      ),
+    );
+    const diff = diffGraphs(base, next);
+    expect(diff.counts).toMatchObject({ added: 1, removed: 0, changed: 0, moved: 0 });
+    // The renumber is real all the same, and the outline shows it.
+    expect(base.nodes.get(FIRST_STATUS)?.stepNumber).toBe('1.1');
+    expect(next.nodes.get(FIRST_STATUS)?.stepNumber).toBe('1.2');
+  });
 });
 
 describe('several mutations at once', () => {

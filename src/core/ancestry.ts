@@ -46,6 +46,21 @@ export function displayName(node: SeqNode): string {
 }
 
 /**
+ * `2.1.6.7 - 6C Pulse (10s)` — the name with its step number, in the notation
+ * the authoring tool's own text export uses, separator included.
+ *
+ * The number is what makes a step addressable: 27 names cover 106 of the 133
+ * nodes, and a reader holding a test report that failed at 2.3.6.8 has nothing
+ * else to search for. Falls back to the bare name on the root and on anything
+ * a malformed file has orphaned, so it is always safe to call.
+ */
+export function numberedName(node: SeqNode): string {
+  return node.stepNumber === ''
+    ? displayName(node)
+    : `${node.stepNumber} - ${displayName(node)}`;
+}
+
+/**
  * Every node in document order: containers depth-first with their children
  * beneath them. This is the outline's row order, and `graph.nodes` insertion
  * order already matches it — but the outline needs the tree, so walk it.

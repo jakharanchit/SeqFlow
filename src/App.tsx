@@ -34,6 +34,11 @@ import {
 import { lint } from './core/lint';
 import { adjacency, pathSet } from './core/paths';
 import { elementCounts, isActive, matchSet, search } from './core/search';
+import {
+  noSignalNames,
+  parseSignalNames,
+  type SignalNameFile,
+} from './core/signalNames';
 import { nodesFor, signalIndex, signalRows } from './core/signals';
 import { compare, similarGroups } from './core/similarity';
 import { asGraph, visibleGraph } from './emit/collapse';
@@ -151,6 +156,13 @@ export function App(): React.JSX.Element {
   /** The earlier revision, when one has been dropped on the Diff tab. */
   const [baseline, setBaseline] = useState<Loaded | null>(null);
   const [diffRow, setDiffRow] = useState<string | null>(null);
+  /**
+   * The optional signal dictionary — human names for the tags. Empty until one
+   * is dropped, and an empty one means every tag shows exactly as the XML
+   * spells it. See `core/signalNames.ts` for why none is derived.
+   */
+  const [signalNames, setSignalNames] = useState<SignalNameFile>(noSignalNames);
+  const [signalNamesFile, setSignalNamesFile] = useState<string | null>(null);
 
   // Guards against a slow layout from an earlier file or toggle landing after
   // a newer one.
@@ -407,6 +419,31 @@ export function App(): React.JSX.Element {
     }
   }, []);
 
+  /**
+   * A signal dictionary — two columns, tag then human name. Dropped like
+   * everything else; the extension routes it. It changes nothing but the
+   * words on screen, so it deliberately does not reset the selection, the
+   * collapse set or the layout.
+   */
+  const loadSignalNames = useCallback((text: string, name: string): void => {
+    const parsed = parseSignalNames(text);
+    if (parsed.size === 0) {
+      setError(`${name}: no tag,name rows in that file`);
+      setDismissed(false);
+      return;
+    }
+    setSignalNames(parsed);
+    setSignalNamesFile(name);
+    setError(null);
+    setDrawerTab('signals');
+    setDrawerOpen(true);
+  }, []);
+
+  const clearSignalNames = useCallback((): void => {
+    setSignalNames(noSignalNames());
+    setSignalNamesFile(null);
+  }, []);
+
   const clearBaseline = useCallback((): void => {
     setBaseline(null);
     setDiffRow(null);
@@ -433,6 +470,7 @@ export function App(): React.JSX.Element {
         // is what tells them apart, and a mislabelled one fails loudly rather
         // than being fed to the XML parser.
         if (/\.json$/i.test(file.name)) loadLayout(text, file.name);
+        else if (/\.(csv|tsv)$/i.test(file.name)) loadSignalNames(text, file.name);
         else load(text, file.name);
       };
       reader.onerror = () => setError(`${file.name}: could not be read`);
@@ -791,11 +829,15 @@ export function App(): React.JSX.Element {
           ahead={ahead}
           offset={selected === null ? null : (stepOffsets.get(selected) ?? null)}
           change={selected === null || diff === null ? null : (diff.status.get(selected) ?? null)}
+          signalNames={signalNames.names}
         />
       </div>
 
       <Drawer
         graph={graph}
+        signalNames={signalNames}
+        signalNamesFile={signalNamesFile}
+        onClearSignalNames={clearSignalNames}
         rules={rules}
         fileName={loaded?.fileName ?? 'sequence.xml'}
         nodes={renderNodes}
