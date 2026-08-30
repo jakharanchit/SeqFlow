@@ -1432,3 +1432,445 @@ button.tool.save-png {
   border-color: var(--accent);
   color: var(--text);
 }
+
+/* ================================================================ Phase 4 */
+
+:root {
+  --added: #57a86b;
+  --removed: #d4544a;
+  --changed: #c98f2e;
+  --info: #6b7688;
+}
+
+/* The kind dot the drawer detail rows have always rendered and never styled —
+   the signal list was drawing a 0 px span. It is the same dot the outline
+   uses, so it gets the same colours. */
+.drawer-detail .dot,
+.drawer-list .dot {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  margin: 0 5px 0 4px;
+  border-radius: 50%;
+  background: var(--action);
+}
+
+.drawer-detail .dot.kind-decision,
+.drawer-list .dot.kind-decision {
+  background: var(--decision);
+}
+.drawer-detail .dot.kind-criteria,
+.drawer-list .dot.kind-criteria {
+  background: var(--criteria);
+}
+.drawer-detail .dot.kind-jump,
+.drawer-list .dot.kind-jump {
+  background: var(--jump);
+}
+
+.drawer-detail h4,
+.drawer-list.wide h4 {
+  margin: 13px 12px 4px;
+  font-size: 9.5px;
+  font-weight: 620;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* ------------------------------------------------------------- findings */
+
+.drawer-tabs button.has-findings b {
+  color: var(--changed);
+  opacity: 1;
+}
+
+.drawer-tabs button.has-diff b {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.finding-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid var(--line-soft);
+  position: sticky;
+  top: 0;
+  background: var(--bg-panel);
+  z-index: 1;
+}
+
+.finding-filters button {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 10px;
+  padding: 1px 7px;
+  cursor: pointer;
+}
+
+.finding-filters button:hover {
+  color: var(--text-dim);
+}
+
+.finding-filters button.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.finding-filters button b {
+  margin-left: 5px;
+  font-family: var(--mono);
+  opacity: 0.65;
+}
+
+.finding-row {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 3px 12px;
+  cursor: pointer;
+  font-size: 11.5px;
+  border-left: 2px solid transparent;
+}
+
+.finding-row:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.finding-row.selected {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+
+.finding-code {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--info);
+  white-space: nowrap;
+}
+
+.finding-row.sev-warn .finding-code,
+.finding-code.sev-warn {
+  color: var(--changed);
+}
+
+.finding-name {
+  color: var(--text);
+  white-space: nowrap;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.finding-detail {
+  padding: 2px 0 10px;
+}
+
+.finding-message {
+  margin: 8px 12px 4px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+.finding-message .finding-code {
+  margin-right: 4px;
+}
+
+/* The one row the arithmetic can prove. The other seven are still there. */
+table.diff tr.odd-row td {
+  background: rgba(217, 164, 65, 0.08);
+}
+
+table.diff tr.odd-row .diff-attr {
+  color: var(--changed);
+}
+
+.diff-attr .klass {
+  margin-left: 6px;
+  font-size: 8.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+/* ------------------------------------------------------------- criteria */
+
+.criteria-tools {
+  padding: 5px 10px 7px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.criteria-tools button b {
+  margin-left: 6px;
+  font-family: var(--mono);
+  opacity: 0.65;
+}
+
+.criteria-ahead {
+  margin: 8px 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.criteria-ahead b {
+  color: var(--text);
+  font-family: var(--mono);
+}
+
+.criteria-ahead .hint {
+  padding: 0;
+  display: inline;
+}
+
+.criteria-detail {
+  padding-bottom: 10px;
+}
+
+.criteria-detail .attrs {
+  margin: 6px 12px;
+  width: calc(100% - 24px);
+}
+
+/* --------------------------------------------------------------- timing */
+
+.timing {
+  padding: 10px 12px 14px;
+}
+
+.timing-headline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.timing-figure {
+  flex: 1 1 190px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-left-color: var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+}
+
+.timing-figure.worst {
+  border-left-color: var(--changed);
+}
+
+.timing-figure.ratio {
+  border-left-color: var(--criteria);
+}
+
+.timing-label {
+  display: block;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.timing-figure b {
+  display: block;
+  font-family: var(--mono);
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.timing-note {
+  display: block;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.timing-caveat {
+  margin: 12px 0 4px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  max-width: 78ch;
+}
+
+.timing-caveat b {
+  color: var(--text);
+}
+
+.timing-table {
+  width: auto;
+  min-width: min(600px, 100%);
+  margin-top: 4px;
+}
+
+.timing-table code {
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+/* ----------------------------------------------------------------- diff */
+
+.diff-empty {
+  padding: 12px;
+}
+
+.diff-drop {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  max-width: 78ch;
+  background: var(--bg-raised);
+}
+
+.diff-drop.over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.diff-drop h3 {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.diff-drop p {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+.diff-empty .hint {
+  max-width: 78ch;
+  padding: 10px 0 0;
+}
+
+.diff-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 5px 10px 7px;
+  border-bottom: 1px solid var(--line-soft);
+  position: sticky;
+  top: 0;
+  background: var(--bg-panel);
+  z-index: 1;
+}
+
+.pill {
+  font-size: 10px;
+  font-family: var(--mono);
+  padding: 1px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  color: var(--text-faint);
+}
+
+.pill.added {
+  border-color: var(--added);
+  color: var(--added);
+}
+.pill.removed {
+  border-color: var(--removed);
+  color: var(--removed);
+}
+.pill.changed {
+  border-color: var(--changed);
+  color: var(--changed);
+}
+
+.finding-code.diff-added {
+  color: var(--added);
+}
+.finding-code.diff-removed {
+  color: var(--removed);
+}
+.finding-code.diff-changed {
+  color: var(--changed);
+}
+
+.diff-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.diff-heading b {
+  color: var(--text);
+  font-weight: 550;
+}
+
+.diff-detail .hint {
+  max-width: 78ch;
+}
+
+.diff-value.was {
+  color: var(--removed);
+}
+
+.diff-value.now {
+  color: var(--added);
+}
+
+.diff-stat {
+  color: var(--accent);
+}
+
+.chip.diff-added {
+  color: var(--added);
+  border-color: var(--added);
+}
+.chip.diff-removed {
+  color: var(--removed);
+  border-color: var(--removed);
+}
+.chip.diff-changed {
+  color: var(--changed);
+  border-color: var(--changed);
+}
+
+.ghost-note {
+  padding: 0 0 6px;
+}
+
+/* Ghosts on the canvas. A removed step is drawn where it used to be, dashed
+   and faded: present enough to read, never mistakable for a live step. */
+.react-flow__node.diff-removed .rf-node {
+  border-style: dashed;
+  border-color: var(--removed);
+  opacity: 0.55;
+}
+
+.react-flow__node.diff-added .rf-node {
+  border-color: var(--added);
+  box-shadow: inset 3px 0 0 var(--added);
+}
+
+.react-flow__node.diff-changed .rf-node {
+  border-color: var(--changed);
+  box-shadow: inset 3px 0 0 var(--changed);
+}
+
+.react-flow__edge.diff-removed .react-flow__edge-path {
+  stroke-dasharray: 3 5;
+  opacity: 0.45;
+}

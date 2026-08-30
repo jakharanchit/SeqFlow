@@ -10,7 +10,7 @@
  */
 
 import { parse as parseYaml } from 'yaml';
-import type { EdgeRule, EdgeStyle, NodeKind, NodeShape, Rules } from './types';
+import type { Durations, EdgeRule, EdgeStyle, NodeKind, NodeShape, Rules } from './types';
 
 /** Thrown for any structural problem in the rule file. */
 export class RuleFileError extends Error {
@@ -99,6 +99,37 @@ function enumMap<T extends string>(
     throw new RuleFileError(key, 'must define a "default" entry');
   }
   return out as Record<string, T> & { default: T };
+}
+
+/**
+ * `durations: { waits: [...], timeouts: [...] }`. Both lists optional; absent
+ * means the duration estimate has nothing to measure and says so, rather than
+ * reporting zero. Spec 7.6.
+ */
+function durations(root: Raw): Durations {
+  const v = root['durations'];
+  if (v === undefined || v === null) return { waits: [], timeouts: [] };
+  if (!isRecord(v)) {
+    throw new RuleFileError('durations', `expected a mapping, got ${typeof v}`);
+  }
+  const list = (key: 'waits' | 'timeouts'): string[] => {
+    if (v[key] === undefined || v[key] === null) return [];
+    return strArray(v, key).map((attr) => {
+      if (attr === '') throw new RuleFileError(`durations.${key}`, 'attribute name is empty');
+      return attr;
+    });
+  };
+  const out = { waits: list('waits'), timeouts: list('timeouts') };
+  for (const attr of out.waits) {
+    if (out.timeouts.includes(attr)) {
+      throw new RuleFileError(
+        'durations',
+        `"${attr}" is listed as both a wait and a timeout; they are reported ` +
+          'separately and one attribute cannot be both',
+      );
+    }
+  }
+  return out;
 }
 
 function edgeRules(root: Raw): EdgeRule[] {
@@ -214,6 +245,7 @@ export function loadRules(yamlText: string): Rules {
     labels: strListMap(doc, 'labels'),
     signalAttrs: doc['signal_attrs'] === undefined ? [] : strArray(doc, 'signal_attrs'),
     externalRefs: doc['external_refs'] === undefined ? [] : strArray(doc, 'external_refs'),
+    durations: durations(doc),
     convergenceThreshold: threshold,
   };
 }

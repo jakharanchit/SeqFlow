@@ -7,6 +7,9 @@
  * whole point of the panel.
  */
 
+import type { CriteriaAhead } from '../core/criteria';
+import type { ChangeKind } from '../core/diff';
+import { humanRange, type Offset } from '../core/duration';
 import type { Graph, SeqNode } from '../core/types';
 
 export interface InspectorProps {
@@ -15,6 +18,12 @@ export interface InspectorProps {
   /** uid -> raw XML for that element. */
   snippets: Map<string, string>;
   onSelect: (uid: string) => void;
+  /** Which criteria lie ahead of this step — Phase 4 task 4. */
+  ahead?: CriteriaAhead | null;
+  /** Where the step sits in the estimate — Phase 4 task 3. */
+  offset?: Offset | null;
+  /** What a revision diff says about it, when one is loaded. */
+  change?: ChangeKind | null;
 }
 
 function AttrTable({ attrs }: { attrs: Record<string, string> }): React.JSX.Element {
@@ -84,6 +93,9 @@ export function Inspector({
   selected,
   snippets,
   onSelect,
+  ahead = null,
+  offset = null,
+  change = null,
 }: InspectorProps): React.JSX.Element {
   if (graph === null) {
     return (
@@ -178,7 +190,17 @@ export function Inspector({
       <div className="insp-sub">
         <span className={`chip kind-${node.kind}`}>{node.kind}</span>
         {node.element}
+        {change !== null && change !== 'same' && (
+          <span className={`chip diff-${change}`}>{change}</span>
+        )}
       </div>
+
+      {change === 'removed' && (
+        <p className="hint ghost-note">
+          This step is not in the loaded revision. It is drawn on the canvas where it used to
+          be, so the deletion is visible rather than merely absent.
+        </p>
+      )}
 
       <Ancestry node={node} graph={graph} onSelect={onSelect} />
 
@@ -212,6 +234,52 @@ export function Inspector({
           ))}
         </div>
       ))}
+
+      {offset !== null && !offset.unreachable && (
+        <div className="section">
+          <h3>Timing</h3>
+          <table className="attrs">
+            <tbody>
+              <tr>
+                <td className="k">reached after</td>
+                <td className="v">{humanRange(offset.nominal)} nominal</td>
+              </tr>
+              <tr>
+                <td className="k">worst case</td>
+                <td className="v">{humanRange(offset.worst)}</td>
+              </tr>
+              <tr>
+                <td className="k">remaining</td>
+                <td className="v">{humanRange(offset.remaining)} nominal</td>
+              </tr>
+            </tbody>
+          </table>
+          <p className="hint">
+            An estimate from the declared waits and timeouts, not a measurement.
+          </p>
+        </div>
+      )}
+
+      {ahead !== null && (
+        <div className="section">
+          <h3>Criteria ahead</h3>
+          <p className="hint">
+            {ahead.uids.length === 0 ? (
+              <>
+                Nothing after this step can reject the unit — every acceptance criterion is
+                behind it.
+              </>
+            ) : (
+              <>
+                <b>{ahead.uids.length}</b> {ahead.uids.length === 1 ? 'evaluation' : 'evaluations'}{' '}
+                across <b>{ahead.keys.length}</b>{' '}
+                {ahead.keys.length === 1 ? 'definition' : 'definitions'} still lie in front of
+                this step.
+              </>
+            )}
+          </p>
+        </div>
+      )}
 
       <div className="section">
         <h3>Attributes</h3>

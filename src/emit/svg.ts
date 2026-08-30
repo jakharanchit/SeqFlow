@@ -40,6 +40,10 @@ export interface Palette {
   decision: string;
   criteria: string;
   jump: string;
+  /* Revision diff — Phase 4 task 5. */
+  added: string;
+  removed: string;
+  changed: string;
 }
 
 /** The canvas, exactly. An export that does not look like the screen is a bug. */
@@ -58,6 +62,9 @@ export const DARK: Palette = {
   decision: '#c98f2e',
   criteria: '#cf5b52',
   jump: '#9a6bd0',
+  added: '#57a86b',
+  removed: '#d4544a',
+  changed: '#c98f2e',
 };
 
 /**
@@ -79,6 +86,9 @@ export const LIGHT: Palette = {
   decision: '#9a6c12',
   criteria: '#b03a31',
   jump: '#6f45a8',
+  added: '#357a48',
+  removed: '#b03a31',
+  changed: '#9a6c12',
 };
 
 export type Theme = 'dark' | 'light';
@@ -192,8 +202,26 @@ export function wrapText(text: string, width: number, lines = 2): string[] {
 /* Shapes                                                              */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The revision-diff class on a node or edge, when a diff is loaded.
+ *
+ * Read unconditionally, unlike `dimmed` and `on-path`. Those are a transient
+ * highlight the reader can turn off; a ghost is what the canvas *is*, and an
+ * export that silently drops it would be a picture of a revision that does not
+ * exist.
+ */
+export function diffClass(className: string | undefined): 'added' | 'removed' | 'changed' | null {
+  const value = className ?? '';
+  if (value.includes('diff-removed')) return 'removed';
+  if (value.includes('diff-added')) return 'added';
+  if (value.includes('diff-changed')) return 'changed';
+  return null;
+}
+
 /** Outline colour per shape, matching the canvas CSS. */
 function strokeFor(node: FlowNode, p: Palette): string {
+  const change = diffClass(node.className);
+  if (change !== null) return p[change];
   if (node.data.collapsed !== undefined) return p.textFaint;
   switch (node.data.shape) {
     case 'diamond':
@@ -211,22 +239,28 @@ function shapeOf(node: Placed, p: Palette): string {
   const { ax: x, ay: y, width: w, height: h } = node;
   const fill = node.data.collapsed === undefined ? p.node : p.nodeCollapsed;
   const stroke = strokeFor(node, p);
-  const dash = node.data.collapsed === undefined ? '' : ' stroke-dasharray="5 4"';
+  const change = diffClass(node.className);
+  const dash =
+    change === 'removed' || node.data.collapsed !== undefined
+      ? ' stroke-dasharray="5 4"'
+      : '';
 
   switch (node.data.shape) {
     case 'diamond':
-      return `<polygon points="${x + w / 2},${y} ${x + w},${y + h / 2} ${x + w / 2},${y + h} ${x},${y + h / 2}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`;
+      return `<polygon points="${x + w / 2},${y} ${x + w},${y + h / 2} ${x + w / 2},${y + h} ${x},${y + h / 2}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"${dash}/>`;
     case 'hexagon': {
       const i = w * 0.12;
-      return `<polygon points="${x + i},${y} ${x + w - i},${y} ${x + w},${y + h / 2} ${x + w - i},${y + h} ${x + i},${y + h} ${x},${y + h / 2}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`;
+      return `<polygon points="${x + i},${y} ${x + w - i},${y} ${x + w},${y + h / 2} ${x + w - i},${y + h} ${x + i},${y + h} ${x},${y + h / 2}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"${dash}/>`;
     }
     case 'rounded':
-      return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${Math.min(26, h / 2)}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`;
+      return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${Math.min(26, h / 2)}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"${dash}/>`;
     default: {
       const radius = node.data.collapsed === undefined ? 4 : 8;
       const box = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"${dash}/>`;
       // The 3 px left accent bar the canvas draws on every plain step.
-      const accent = `<rect x="${x}" y="${y + 1}" width="3" height="${h - 2}" fill="${node.data.collapsed === undefined ? p.action : p.textDim}"/>`;
+      const bar =
+        change !== null ? p[change] : node.data.collapsed === undefined ? p.action : p.textDim;
+      const accent = `<rect x="${x}" y="${y + 1}" width="3" height="${h - 2}" fill="${bar}"/>`;
       return `${box}${accent}`;
     }
   }
@@ -346,10 +380,12 @@ export function toSvg(
     const reason = String(edge.data.reason);
     const base = EDGE_COLOR[reason] ?? EDGE_COLOR['fallthrough']!;
     const colour = options.theme === 'light' ? darken(base) : base;
-    const dashed = edge.style.strokeDasharray !== undefined;
+    const ghost = diffClass(edge.className) === 'removed';
+    const dashed = ghost || edge.style.strokeDasharray !== undefined;
+    const opacity = faded ? 0.16 : ghost ? 0.45 : null;
 
     out.push(
-      `<polyline points="${polyline(points)}" fill="none" stroke="${lit ? p.accent : colour}" stroke-width="${lit ? 2.4 : edge.style.strokeWidth}"${dashed ? ' stroke-dasharray="5 4"' : ''}${faded ? ' opacity="0.16"' : ''} marker-end="url(#a-${reason})"/>`,
+      `<polyline points="${polyline(points)}" fill="none" stroke="${lit ? p.accent : ghost ? p.removed : colour}" stroke-width="${lit ? 2.4 : edge.style.strokeWidth}"${dashed ? ` stroke-dasharray="${ghost ? '3 5' : '5 4'}"` : ''}${opacity === null ? '' : ` opacity="${opacity}"`} marker-end="url(#a-${reason})"/>`,
     );
 
     if (edge.label !== undefined && !faded) {
@@ -369,7 +405,8 @@ export function toSvg(
     if (node.type === 'seqGroup') continue;
     const faded = dim(node.className);
     const lit = onPath(node.className);
-    out.push(`<g${faded ? ' opacity="0.2"' : ''}>`);
+    const ghost = diffClass(node.className) === 'removed';
+    out.push(`<g${faded ? ' opacity="0.2"' : ghost ? ' opacity="0.6"' : ''}>`);
     out.push(shapeOf(node, p));
     if (lit) {
       out.push(

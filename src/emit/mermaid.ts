@@ -64,7 +64,33 @@ export interface MermaidOptions {
    * to the per-sequence files. Iterated in emission order, never Map order.
    */
   links?: ReadonlyMap<string, string>;
+  /**
+   * uid -> class name. Emitted as Mermaid `class` statements, so a revision
+   * diff leaves the app the way everything else in Phase 3 does — added,
+   * removed and changed as three classes on nodes the emitter already draws.
+   *
+   * Assignments are grouped by class and listed in *model* order, never Map
+   * order, so NFR-1 still holds.
+   */
+  classes?: ReadonlyMap<string, string>;
+  /**
+   * Class name -> Mermaid style, emitted as `classDef`. A class with no style
+   * here still gets its `class` assignments; the diagram carries the marking
+   * without colouring it.
+   */
+  classDefs?: Readonly<Record<string, string>>;
 }
+
+/**
+ * The three diff classes, styled to match the canvas and the SVG export.
+ * Exported rather than inlined so a caller cannot invent a fourth colour for
+ * the same idea.
+ */
+export const DIFF_CLASS_DEFS: Readonly<Record<string, string>> = {
+  added: 'fill:#1d2b22,stroke:#57a86b,stroke-width:2px',
+  removed: 'fill:#2b1d1d,stroke:#d4544a,stroke-width:2px,stroke-dasharray: 4 4',
+  changed: 'fill:#2b271d,stroke:#c98f2e,stroke-width:2px',
+};
 
 /* ------------------------------------------------------------------ */
 /* Model                                                               */
@@ -338,6 +364,27 @@ export function toMermaid(
   // is legal but binds its endpoints to that subgraph, which silently moves a
   // node when a jump crosses a boundary.
   for (const edge of model.edges) lines.push(edgeLine(edge, '  '));
+
+  /* Classes, before the click directives. Grouped so 133 nodes do not become
+     133 lines, and ordered by the model rather than by the caller's Map. */
+  if (options.classes !== undefined && options.classes.size > 0) {
+    const grouped = new Map<string, string[]>();
+    for (const node of model.nodes) {
+      const name = options.classes.get(node.uid);
+      if (name === undefined) continue;
+      const bucket = grouped.get(name);
+      if (bucket === undefined) grouped.set(name, [node.id]);
+      else bucket.push(node.id);
+    }
+    const names = [...grouped.keys()].sort();
+    for (const name of names) {
+      const style = options.classDefs?.[name];
+      if (style !== undefined) lines.push(`  classDef ${name} ${style}`);
+    }
+    for (const name of names) {
+      lines.push(`  class ${grouped.get(name)!.join(',')} ${name}`);
+    }
+  }
 
   if (options.links !== undefined) {
     for (const node of model.nodes) {

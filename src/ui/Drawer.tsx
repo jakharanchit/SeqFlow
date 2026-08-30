@@ -1,10 +1,16 @@
 /**
- * Bottom drawer — spec 7.1. Four tabs: signals, repeats, warnings and export.
+ * Bottom drawer — spec 7.1. Eight tabs.
  *
- * The first three are cross-cutting tables: they answer questions about the
- * whole file rather than about the selected node, which is why they sit under
- * the canvas rather than in the inspector. Export joined them for the same
- * reason — Mermaid text is a view of the whole graph, not of a selection.
+ * Everything here is a question about the whole file rather than about the
+ * selected node, which is why it sits under the canvas rather than in the
+ * inspector. Signals, criteria, repeats and the diff are cross-cutting tables;
+ * timing is a whole-file number; export is a view of the whole graph.
+ *
+ * **Findings and warnings are two tabs and stay two tabs.** A warning means the
+ * parser could not make sense of something. A finding means it parsed fine and
+ * still looks wrong. The fixture has 52 findings and zero warnings, and a
+ * single list would make that file look broken while burying the four warnings
+ * that would matter on a file that had them.
  *
  * The warnings list used to live in a dismissible banner. A list you can
  * dismiss is a list nobody reads twice, and NFR-6 wants unknown elements
@@ -12,15 +18,31 @@
  */
 
 import { pathLabel } from '../core/ancestry';
+import type { CriteriaAhead, Criterion } from '../core/criteria';
+import type { GraphDiff } from '../core/diff';
+import type { DurationReport, Offset } from '../core/duration';
+import type { LintResult } from '../core/lint';
 import type { SignalIndex, SignalRow } from '../core/signals';
 import { nodesFor } from '../core/signals';
 import type { Comparison, SimilarGroup } from '../core/similarity';
 import type { Graph, Rules, Warning } from '../core/types';
 import type { FlowEdge, FlowNode } from '../emit/flow';
 import type { Point } from '../layout/elkGraph';
+import { Criteria } from './Criteria';
+import { Diff } from './Diff';
 import { Export } from './Export';
+import { Findings } from './Findings';
+import { Timing } from './Timing';
 
-export type DrawerTab = 'signals' | 'repeats' | 'warnings' | 'export';
+export type DrawerTab =
+  | 'signals'
+  | 'criteria'
+  | 'timing'
+  | 'repeats'
+  | 'findings'
+  | 'warnings'
+  | 'diff'
+  | 'export';
 
 export interface DrawerProps {
   graph: Graph | null;
@@ -44,106 +66,194 @@ export interface DrawerProps {
   comparison: Comparison | null;
   repeat: number;
   onRepeat: (index: number) => void;
+
+  /* Phase 4 */
+  lint: LintResult;
+  finding: number | null;
+  onFinding: (index: number | null) => void;
+  criteria: Criterion[];
+  criterion: string | null;
+  onCriterion: (key: string | null) => void;
+  failRoutes: boolean;
+  onFailRoutes: (on: boolean) => void;
+  failCount: number;
+  ahead: CriteriaAhead | null;
+  duration: DurationReport;
+  offset: Offset | null;
+  terminals: number;
+  diff: GraphDiff | null;
+  baselineName: string | null;
+  onBaseline: (text: string, fileName: string) => void;
+  onClearBaseline: () => void;
+  diffRow: string | null;
+  onDiffRow: (uid: string | null) => void;
+
   open: boolean;
   tab: DrawerTab;
   /** The signal whose steps are spotlit on the canvas. */
   signal: string | null;
+  selected: string | null;
   onTab: (tab: DrawerTab) => void;
   onOpen: (open: boolean) => void;
   onSignal: (signal: string | null) => void;
   onSelect: (uid: string) => void;
 }
 
-export function Drawer({
-  graph,
-  rules,
-  fileName,
-  nodes,
-  edges,
-  routes,
-  highlighted,
-  layoutMode,
-  collapsed,
-  index,
-  rows,
-  warnings,
-  repeats,
-  comparison,
-  repeat,
-  onRepeat,
-  open,
+/** Tabs that need more room than a signal list. */
+const TALL: ReadonlySet<DrawerTab> = new Set<DrawerTab>(['export', 'timing', 'findings', 'diff']);
+
+interface TabProps {
+  id: DrawerTab;
+  label: string;
+  count?: number;
+  className?: string;
+  title?: string;
+  /** The currently open tab, and whether the drawer is open at all. */
+  tab: DrawerTab;
+  open: boolean;
+  onTab: (tab: DrawerTab) => void;
+  onOpen: (open: boolean) => void;
+}
+
+/**
+ * Every tab button behaves the same: click the open one to close it.
+ *
+ * Declared here rather than inside `Drawer`, which would give React a new
+ * component type on every render and remount all eight buttons each time.
+ */
+function Tab({
+  id,
+  label,
+  count,
+  className,
+  title,
   tab,
-  signal,
+  open,
   onTab,
   onOpen,
-  onSignal,
-  onSelect,
-}: DrawerProps): React.JSX.Element | null {
+}: TabProps): React.JSX.Element {
+  const active = tab === id && open;
+  return (
+    <button
+      type="button"
+      className={`${active ? 'on' : ''}${className === undefined ? '' : ` ${className}`}`}
+      title={title}
+      onClick={() => {
+        if (active) onOpen(false);
+        else {
+          onTab(id);
+          onOpen(true);
+        }
+      }}
+    >
+      {label}
+      {count !== undefined && <b>{count}</b>}
+    </button>
+  );
+}
+
+export function Drawer(props: DrawerProps): React.JSX.Element | null {
+  const {
+    graph,
+    rules,
+    fileName,
+    nodes,
+    edges,
+    routes,
+    highlighted,
+    layoutMode,
+    collapsed,
+    index,
+    rows,
+    warnings,
+    repeats,
+    comparison,
+    repeat,
+    onRepeat,
+    lint,
+    finding,
+    onFinding,
+    criteria,
+    criterion,
+    onCriterion,
+    failRoutes,
+    onFailRoutes,
+    failCount,
+    ahead,
+    duration,
+    offset,
+    terminals,
+    diff,
+    baselineName,
+    onBaseline,
+    onClearBaseline,
+    diffRow,
+    onDiffRow,
+    open,
+    tab,
+    signal,
+    selected,
+    onTab,
+    onOpen,
+    onSignal,
+    onSelect,
+  } = props;
+
   if (graph === null) return null;
 
   const uids = signal === null ? [] : [...nodesFor(index, signal)];
 
+  /** What every tab button needs to know: which is open, and how to switch. */
+  const shared = { tab, open, onTab, onOpen };
+
   return (
-    /* Export needs more room than a signal list: 300 lines of Mermaid read
-       through a 216 px slot is not a preview. */
-    <div className={`drawer${open ? ' open' : ''}${open && tab === 'export' ? ' tall' : ''}`}>
+    <div className={`drawer${open ? ' open' : ''}${open && TALL.has(tab) ? ' tall' : ''}`}>
       <div className="drawer-tabs">
-        <button
-          type="button"
-          className={tab === 'signals' && open ? 'on' : ''}
-          onClick={() => {
-            if (tab === 'signals' && open) onOpen(false);
-            else {
-              onTab('signals');
-              onOpen(true);
-            }
-          }}
-        >
-          Signals<b>{rows.length}</b>
-        </button>
-        <button
-          type="button"
-          className={tab === 'repeats' && open ? 'on' : ''}
-          onClick={() => {
-            if (tab === 'repeats' && open) onOpen(false);
-            else {
-              onTab('repeats');
-              onOpen(true);
-            }
-          }}
-        >
-          Repeats<b>{repeats.length}</b>
-        </button>
-        <button
-          type="button"
-          className={`${tab === 'warnings' && open ? 'on' : ''}${warnings.length > 0 ? ' has-warnings' : ''}`}
-          onClick={() => {
-            if (tab === 'warnings' && open) onOpen(false);
-            else {
-              onTab('warnings');
-              onOpen(true);
-            }
-          }}
-        >
-          Warnings<b>{warnings.length}</b>
-        </button>
-        <button
-          type="button"
-          className={tab === 'export' && open ? 'on' : ''}
-          onClick={() => {
-            if (tab === 'export' && open) onOpen(false);
-            else {
-              onTab('export');
-              onOpen(true);
-            }
-          }}
-        >
-          Export
-        </button>
+        <Tab {...shared} id="signals" label="Signals" count={rows.length} />
+        <Tab
+          {...shared}
+          id="criteria"
+          label="Criteria"
+          count={criteria.length}
+          title="What can reject this unit"
+        />
+        <Tab {...shared} id="timing" label="Timing" title="How long this sequence takes — a range" />
+        <Tab {...shared} id="repeats" label="Repeats" count={repeats.length} />
+        <Tab
+          {...shared}
+          id="findings"
+          label="Findings"
+          count={lint.findings.length}
+          className={lint.findings.some((f) => f.severity === 'warn') ? 'has-findings' : ''}
+          title="Things that parsed correctly and still look wrong"
+        />
+        <Tab
+          {...shared}
+          id="warnings"
+          label="Warnings"
+          count={warnings.length}
+          className={warnings.length > 0 ? 'has-warnings' : ''}
+          title="Things the parser could not make sense of"
+        />
+        <Tab
+          {...shared}
+          id="diff"
+          label="Diff"
+          {...(diff === null ? {} : { count: diff.nodes.length })}
+          className={diff === null ? '' : 'has-diff'}
+          title="Compare against an earlier revision"
+        />
+        <Tab {...shared} id="export" label="Export" />
+
         <div className="spacer" />
         {signal !== null && (
           <button type="button" className="clear-signal" onClick={() => onSignal(null)}>
             Clear “{signal}” spotlight
+          </button>
+        )}
+        {criterion !== null && (
+          <button type="button" className="clear-signal" onClick={() => onCriterion(null)}>
+            Clear criterion spotlight
           </button>
         )}
         {open && (
@@ -202,6 +312,47 @@ export function Drawer({
                 )}
               </div>
             </>
+          ) : tab === 'criteria' ? (
+            <Criteria
+              graph={graph}
+              table={criteria}
+              criterion={criterion}
+              onCriterion={onCriterion}
+              failRoutes={failRoutes}
+              onFailRoutes={onFailRoutes}
+              failCount={failCount}
+              selected={selected}
+              ahead={ahead}
+              onSelect={onSelect}
+            />
+          ) : tab === 'timing' ? (
+            <Timing
+              graph={graph}
+              report={duration}
+              selected={selected}
+              offset={offset}
+              terminals={terminals}
+            />
+          ) : tab === 'findings' ? (
+            <Findings
+              graph={graph}
+              lint={lint}
+              selected={finding}
+              onSelect={onFinding}
+              onReveal={onSelect}
+            />
+          ) : tab === 'diff' ? (
+            <Diff
+              graph={graph}
+              baselineName={baselineName}
+              fileName={fileName}
+              diff={diff}
+              onDrop={onBaseline}
+              onClear={onClearBaseline}
+              onSelect={onSelect}
+              expanded={diffRow}
+              onExpand={onDiffRow}
+            />
           ) : tab === 'repeats' ? (
             <>
               <div className="drawer-list">
@@ -285,13 +436,19 @@ export function Drawer({
               highlighted={highlighted}
               layoutMode={layoutMode}
               collapsed={collapsed}
+              diff={diff}
             />
           ) : (
             <div className="drawer-list wide">
               {warnings.length === 0 ? (
                 <p className="hint">
                   No warnings. Every element in this file is known to the rule file and every
-                  jump target resolved.
+                  jump target resolved. {lint.findings.length > 0 && (
+                    <>
+                      That is a different question from whether the sequence looks right —{' '}
+                      <b>Findings</b> has {lint.findings.length} of those.
+                    </>
+                  )}
                 </p>
               ) : (
                 warnings.map((w, i) => (

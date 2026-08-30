@@ -14,9 +14,11 @@
 
 import { useMemo, useState } from 'react';
 
+import type { GraphDiff } from '../core/diff';
 import type { Graph, Rules } from '../core/types';
 import type { FlowEdge, FlowNode } from '../emit/flow';
 import {
+  DIFF_CLASS_DEFS,
   mermaidModel,
   toMermaid,
   toMermaidSplit,
@@ -47,6 +49,12 @@ export interface ExportProps {
   /** The layout mode and collapsed set, for the sidecar. */
   layoutMode: string;
   collapsed: ReadonlySet<string>;
+  /**
+   * The loaded revision diff, when there is one. The image export needs
+   * nothing from it — `nodes` already carries the diff classes — but Mermaid
+   * has no classes until it is told about them.
+   */
+  diff: GraphDiff | null;
 }
 
 /** Deepest container in the file: the depth slider has no reason to go past it. */
@@ -69,6 +77,7 @@ export function Export({
   highlighted,
   layoutMode,
   collapsed,
+  diff,
 }: ExportProps): React.JSX.Element {
   const [format, setFormat] = useState<ExportFormat>('mermaid');
   const [mode, setMode] = useState<ExportMode>('full');
@@ -77,6 +86,8 @@ export function Export({
   const [groups, setGroups] = useState(true);
   const [which, setWhich] = useState(0);
   const [copied, setCopied] = useState<string | null>(null);
+  /** The fourth Mermaid state: added / removed / changed as three classes. */
+  const [marked, setMarked] = useState(true);
 
   const [theme, setTheme] = useState<Theme>('dark');
   const [scale, setScale] = useState(1);
@@ -104,9 +115,26 @@ export function Export({
     return { kind: 'full' };
   }, [mode, depth]);
 
+  /**
+   * uid -> diff class. Nodes the diff calls unchanged carry no class at all,
+   * so an unmarked diagram is byte-identical to one emitted without a diff.
+   */
+  const classes = useMemo(() => {
+    if (diff === null || !marked) return undefined;
+    const out = new Map<string, string>();
+    for (const [uid, kind] of diff.status) {
+      if (kind !== 'same') out.set(uid, kind);
+    }
+    return out;
+  }, [diff, marked]);
+
   /** Split emits several files; every other mode emits exactly one. */
   const files: MermaidFile[] = useMemo(() => {
-    const options = { direction, groups };
+    const options = {
+      direction,
+      groups,
+      ...(classes === undefined ? {} : { classes, classDefs: DIFF_CLASS_DEFS }),
+    };
     if (mode === 'split') return toMermaidSplit(graph, rules, base, options);
     return [
       {
@@ -115,7 +143,7 @@ export function Export({
         text: toMermaid(graph, rules, { ...options, mode: emitMode }),
       },
     ];
-  }, [graph, rules, base, fileName, mode, emitMode, direction, groups]);
+  }, [graph, rules, base, fileName, mode, emitMode, direction, groups, classes]);
 
   const active = files[Math.min(which, files.length - 1)] ?? files[0]!;
 
@@ -268,6 +296,21 @@ export function Export({
               title="Draw each sequence as a Mermaid subgraph"
             >
               Sequence boxes
+            </button>
+
+            <button
+              type="button"
+              className={`tool${marked && diff !== null ? ' on' : ''}`}
+              aria-pressed={marked && diff !== null}
+              disabled={diff === null}
+              onClick={() => setMarked((m) => !m)}
+              title={
+                diff === null
+                  ? 'Load an earlier revision on the Diff tab to mark what changed'
+                  : 'Mark added, removed and changed steps with Mermaid classes'
+              }
+            >
+              Mark changes
             </button>
 
             <div className="spacer" />

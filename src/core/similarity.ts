@@ -128,8 +128,12 @@ const IGNORED_ATTRS = new Set(['uid']);
  * Flatten a node's own attributes plus those lifted from its inspector
  * children, so a ConditionStep's threshold is compared alongside its own
  * attributes rather than being invisible.
+ *
+ * Exported because it is the definition of "this node's attributes" that every
+ * comparison in the tool has to agree on — the sibling table here and the
+ * revision diff in `core/diff.ts` are the same question asked twice.
  */
-function flatAttrs(node: SeqNode): Map<string, string> {
+export function flatAttrs(node: SeqNode): Map<string, string> {
   const out = new Map<string, string>();
   for (const [k, v] of Object.entries(node.attrs)) {
     if (!IGNORED_ATTRS.has(k)) out.set(k, v);

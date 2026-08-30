@@ -17,7 +17,22 @@ import { ParseError, indexElements, parse } from './core/parse';
 import { loadRules } from './core/rules';
 import type { Graph, Warning } from './core/types';
 import { ancestorUids } from './core/ancestry';
-import { pathSet } from './core/paths';
+import {
+  criteriaAhead,
+  criteriaTable,
+  failEdges,
+  nodesForCriterion,
+} from './core/criteria';
+import { diffGraphs, mergedGraph, summarise } from './core/diff';
+import {
+  durations,
+  offsets,
+  terminalCount,
+  type DurationReport,
+  type Offset,
+} from './core/duration';
+import { lint } from './core/lint';
+import { adjacency, pathSet } from './core/paths';
 import { elementCounts, isActive, matchSet, search } from './core/search';
 import { nodesFor, signalIndex, signalRows } from './core/signals';
 import { compare, similarGroups } from './core/similarity';
@@ -63,6 +78,31 @@ function snippetsFor(xml: string, graph: Graph): Map<string, string> {
 
 const NO_COLLAPSE: ReadonlySet<string> = new Set();
 
+/** Placeholders so the drawer's props never go optional before a file lands. */
+const EMPTY_COUNTS = {
+  ODD_SIBLING_ATTR: 0,
+  UNREACHABLE: 0,
+  MULTIPLE_TERMINALS: 0,
+  STALE_TARGET: 0,
+  DUPLICATE_NAME: 0,
+  EXTERNAL_CRITERIA: 0,
+} as const;
+
+const EMPTY_DURATION: DurationReport = {
+  timed: false,
+  waitAttrs: [],
+  timeoutAttrs: [],
+  waitSteps: 0,
+  waitSeconds: 0,
+  pollingSteps: 0,
+  pollingSeconds: 0,
+  paths: 0,
+  cyclic: false,
+  nominal: { min: 0, max: 0 },
+  worst: { min: 0, max: 0 },
+  ratio: Infinity,
+};
+
 export function App(): React.JSX.Element {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(NO_COLLAPSE);
@@ -104,6 +144,13 @@ export function App(): React.JSX.Element {
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('signals');
   const [signal, setSignal] = useState<string | null>(null);
   const [repeat, setRepeat] = useState(0);
+  /* Phase 4. */
+  const [finding, setFinding] = useState<number | null>(null);
+  const [criterion, setCriterion] = useState<string | null>(null);
+  const [failRoutes, setFailRoutes] = useState(false);
+  /** The earlier revision, when one has been dropped on the Diff tab. */
+  const [baseline, setBaseline] = useState<Loaded | null>(null);
+  const [diffRow, setDiffRow] = useState<string | null>(null);
 
   // Guards against a slow layout from an earlier file or toggle landing after
   // a newer one.
@@ -112,7 +159,31 @@ export function App(): React.JSX.Element {
   /** Read by `loadLayout`, which must not be rebuilt every time the graph is. */
   const graphRef = useRef<Graph | null>(null);
 
-  const graph = loaded?.graph ?? null;
+  /**
+   * The file as parsed: what every analysis panel is about. When a baseline is
+   * loaded this is still the *new* revision — the ghosts belong to the canvas,
+   * not to the linter.
+   */
+  const subject = loaded?.graph ?? null;
+
+  const diff = useMemo(
+    () => (subject === null || baseline === null ? null : diffGraphs(baseline.graph, subject)),
+    [subject, baseline],
+  );
+
+  /**
+   * What the canvas, outline and inspector show. With no baseline that is the
+   * parsed file. With one it is the new revision plus the removed steps drawn
+   * back in where they were — a deletion has to be visible, and an absence is
+   * exactly what a reader cannot see.
+   */
+  const graph = useMemo(
+    () =>
+      subject === null || baseline === null || diff === null
+        ? subject
+        : mergedGraph(baseline.graph, subject, diff),
+    [subject, baseline, diff],
+  );
   graphRef.current = graph;
 
   /** The graph as the canvas currently shows it: collapsed sequences folded. */
@@ -129,9 +200,12 @@ export function App(): React.JSX.Element {
   );
   const available = useMemo(() => (graph === null ? [] : elementCounts(graph)), [graph]);
 
+  /* Every analysis below is about the parsed file, so it reads `subject`. A
+     ghost is a step this revision does not have; counting its signals, timing
+     it, or linting it would be reporting on a file that is not the subject. */
   const index = useMemo(
-    () => (graph === null ? new Map<string, never[]>() : signalIndex(graph, rules)),
-    [graph],
+    () => (subject === null ? new Map<string, never[]>() : signalIndex(subject, rules)),
+    [subject],
   );
   const signals = useMemo(() => signalRows(index), [index]);
 
@@ -139,12 +213,55 @@ export function App(): React.JSX.Element {
    * Structurally identical sibling sequences. On the fixture this is one group:
    * the four Pulses, 112 of the 133 nodes, differing in eight attributes.
    */
-  const repeats = useMemo(() => (graph === null ? [] : similarGroups(graph)), [graph]);
+  const repeats = useMemo(() => (subject === null ? [] : similarGroups(subject)), [subject]);
   const comparison = useMemo(() => {
     const group = repeats[repeat];
-    if (graph === null || group === undefined) return null;
-    return compare(graph, group.members);
-  }, [graph, repeats, repeat]);
+    if (subject === null || group === undefined) return null;
+    return compare(subject, group.members);
+  }, [subject, repeats, repeat]);
+
+  /* ---------------------------------------------------------------- */
+  /* Phase 4 analysis                                                   */
+  /* ---------------------------------------------------------------- */
+
+  const findings = useMemo(
+    () =>
+      subject === null
+        ? { findings: [], counts: EMPTY_COUNTS, siblings: [] }
+        : lint(subject, rules),
+    [subject],
+  );
+
+  const criteria = useMemo(
+    () => (subject === null ? [] : criteriaTable(subject, rules)),
+    [subject],
+  );
+
+  const abortRoutes = useMemo(
+    () => (subject === null ? null : failEdges(subject)),
+    [subject],
+  );
+
+  const duration = useMemo(
+    () => (subject === null ? EMPTY_DURATION : durations(subject, rules)),
+    [subject],
+  );
+
+  const stepOffsets = useMemo(
+    () => (subject === null ? new Map<string, Offset>() : offsets(subject, rules)),
+    [subject],
+  );
+
+  const terminals = useMemo(
+    () => (subject === null ? 0 : terminalCount(subject)),
+    [subject],
+  );
+
+  /** Which criteria still lie in front of the selected step. */
+  const ahead = useMemo(() => {
+    if (subject === null || selected === null || !subject.nodes.has(selected)) return null;
+    return criteriaAhead(subject, selected, criteria, adjacency(subject));
+  }, [subject, selected, criteria]);
 
   /**
    * Layout runs whenever the visible graph or the mode changes — a collapse
@@ -215,6 +332,13 @@ export function App(): React.JSX.Element {
       setFocus(null);
       setSignal(null);
       setRepeat(0);
+      setFinding(null);
+      setCriterion(null);
+      setFailRoutes(false);
+      setDiffRow(null);
+      // A baseline is a comparison against *this* file. Loading a different
+      // one leaves it comparing two files the reader never asked about.
+      setBaseline(null);
       // A warning has to be seen. The drawer opens itself rather than relying
       // on a banner the reader can dismiss and never look at again.
       if (parsed.warnings.length > 0) {
@@ -259,6 +383,34 @@ export function App(): React.JSX.Element {
     },
     [],
   );
+
+  /**
+   * An earlier revision, dropped on the Diff tab — spec 7.7.
+   *
+   * The canvas keeps showing the loaded file; this one only supplies the
+   * ghosts. Parsed with the same rules and the same parser, so a revision that
+   * does not parse fails here the way it would on the page.
+   */
+  const loadBaseline = useCallback((xml: string, name: string): void => {
+    try {
+      const parsed = parse(xml, { rules, domParser: new DOMParser() });
+      setBaseline({ graph: parsed, fileName: name, snippets: snippetsFor(xml, parsed) });
+      setDiffRow(null);
+      setError(null);
+    } catch (err) {
+      const message =
+        err instanceof ParseError || err instanceof Error
+          ? err.message
+          : 'could not read that file';
+      setError(`${name}: ${message}`);
+      setDismissed(false);
+    }
+  }, []);
+
+  const clearBaseline = useCallback((): void => {
+    setBaseline(null);
+    setDiffRow(null);
+  }, []);
 
   /* Drag and drop, anywhere on the page. */
   useEffect(() => {
@@ -390,6 +542,34 @@ export function App(): React.JSX.Element {
     return new Set([...nodesFor(index, signal)].map((uid) => view.lifted.get(uid) ?? uid));
   }, [view, signal, index]);
 
+  /** The four steps applying the criterion picked in the drawer. */
+  const criterionLight = useMemo(() => {
+    if (view === null || criterion === null) return null;
+    return new Set(
+      [...nodesForCriterion(criteria, criterion)].map((uid) => view.lifted.get(uid) ?? uid),
+    );
+  }, [view, criterion, criteria]);
+
+  /**
+   * The 16 fail routes as one set — Phase 4 task 4. Lifted through the collapse
+   * view the same way path highlighting is, so folding the Pulses keeps it.
+   */
+  const failLight = useMemo(() => {
+    if (view === null || abortRoutes === null || !failRoutes) return null;
+    const lift = (uid: string): string => view.lifted.get(uid) ?? uid;
+    return {
+      nodes: new Set([...abortRoutes.nodes].map(lift)),
+      edges: new Set(
+        abortRoutes.edges
+          .map((e) => `${lift(e.src)}|${e.reason}|${lift(e.dst)}`)
+          .filter((key) => {
+            const [src, , dst] = key.split('|');
+            return src !== dst;
+          }),
+      ),
+    };
+  }, [view, abortRoutes, failRoutes]);
+
   /* Selection is app state; React Flow is told about it rather than owning it. */
   const renderNodes = useMemo(
     () =>
@@ -403,30 +583,65 @@ export function App(): React.JSX.Element {
           !isGroup &&
           ((matches !== null && !matches.has(n.id)) ||
             (spotlight !== null && !spotlight.has(n.id)) ||
+            (criterionLight !== null && !criterionLight.has(n.id)) ||
+            (failLight !== null && !failLight.nodes.has(n.id)) ||
             (highlight !== null && !highlight.nodes.has(n.id)));
-        const onPath = !isGroup && highlight !== null && highlight.nodes.has(n.id);
-        const className = [dim ? 'dimmed' : '', onPath ? 'on-path' : ''].filter(Boolean).join(' ');
+        const onPath =
+          !isGroup &&
+          ((highlight !== null && highlight.nodes.has(n.id)) ||
+            (failLight !== null && failLight.nodes.has(n.id)));
+        // Diff classes are not a highlight: they say what happened to the step,
+        // and a dimmed ghost is still a ghost. Both may apply at once.
+        const change = diff === null ? undefined : diff.status.get(n.id);
+        const className = [
+          dim ? 'dimmed' : '',
+          onPath ? 'on-path' : '',
+          change === undefined || change === 'same' ? '' : `diff-${change}`,
+        ]
+          .filter(Boolean)
+          .join(' ');
         const isSelected = n.id === selected;
         if (n.selected === isSelected && (n.className ?? '') === className) return n;
         return { ...n, selected: isSelected, className };
       }),
-    [nodes, selected, matches, spotlight, highlight],
+    [nodes, selected, matches, spotlight, criterionLight, failLight, highlight, diff],
   );
 
   const renderEdges = useMemo(
     () =>
       edges.map((e) => {
         const key = `${e.source}|${String(e.data.reason)}|${e.target}`;
-        const onPath = highlight !== null && highlight.edges.has(key);
+        const onPath =
+          (highlight !== null && highlight.edges.has(key)) ||
+          (failLight !== null && failLight.edges.has(key));
         const dim =
-          (highlight !== null && !onPath) ||
+          (highlight !== null && !highlight.edges.has(key)) ||
+          (failLight !== null && !failLight.edges.has(key)) ||
           (matches !== null && !(matches.has(e.source) && matches.has(e.target))) ||
-          (spotlight !== null && !(spotlight.has(e.source) && spotlight.has(e.target)));
-        const className = [dim ? 'dimmed' : '', onPath ? 'on-path' : ''].filter(Boolean).join(' ');
+          (spotlight !== null && !(spotlight.has(e.source) && spotlight.has(e.target))) ||
+          (criterionLight !== null &&
+            !(criterionLight.has(e.source) && criterionLight.has(e.target)));
+        const ghost =
+          diff !== null &&
+          (diff.status.get(e.source) === 'removed' || diff.status.get(e.target) === 'removed');
+        const className = [
+          dim ? 'dimmed' : '',
+          onPath ? 'on-path' : '',
+          ghost ? 'diff-removed' : '',
+        ]
+          .filter(Boolean)
+          .join(' ');
         return (e.className ?? '') === className ? e : { ...e, className };
       }),
-    [edges, matches, spotlight, highlight],
+    [edges, matches, spotlight, criterionLight, failLight, highlight, diff],
   );
+
+  /** A ghost's XML comes from the earlier revision; nothing else does. */
+  const snippets = useMemo(() => {
+    if (loaded === null) return new Map<string, string>();
+    if (baseline === null) return loaded.snippets;
+    return new Map([...baseline.snippets, ...loaded.snippets]);
+  }, [loaded, baseline]);
 
   const showBanner = !dismissed && error !== null;
   const visibleCount = view?.nodes.size ?? 0;
@@ -444,6 +659,12 @@ export function App(): React.JSX.Element {
             <b>{visibleCount}</b>
             {visibleCount === graph.nodes.size ? '' : ` / ${graph.nodes.size}`} nodes ·{' '}
             <b>{edges.length}</b> edges · <b>{elapsedMs}</b> ms
+            {diff !== null && (
+              <>
+                {' · '}
+                <b className="diff-stat">{summarise(diff)}</b>
+              </>
+            )}
           </div>
         )}
 
@@ -565,8 +786,11 @@ export function App(): React.JSX.Element {
         <Inspector
           graph={graph}
           selected={selected}
-          snippets={loaded?.snippets ?? new Map()}
+          snippets={snippets}
           onSelect={reveal}
+          ahead={ahead}
+          offset={selected === null ? null : (stepOffsets.get(selected) ?? null)}
+          change={selected === null || diff === null ? null : (diff.status.get(selected) ?? null)}
         />
       </div>
 
@@ -587,9 +811,29 @@ export function App(): React.JSX.Element {
         comparison={comparison}
         repeat={repeat}
         onRepeat={setRepeat}
+        lint={findings}
+        finding={finding}
+        onFinding={setFinding}
+        criteria={criteria}
+        criterion={criterion}
+        onCriterion={setCriterion}
+        failRoutes={failRoutes}
+        onFailRoutes={setFailRoutes}
+        failCount={abortRoutes?.edges.length ?? 0}
+        ahead={ahead}
+        duration={duration}
+        offset={selected === null ? null : (stepOffsets.get(selected) ?? null)}
+        terminals={terminals}
+        diff={diff}
+        baselineName={baseline?.fileName ?? null}
+        onBaseline={loadBaseline}
+        onClearBaseline={clearBaseline}
+        diffRow={diffRow}
+        onDiffRow={setDiffRow}
         open={drawerOpen}
         tab={drawerTab}
         signal={signal}
+        selected={selected}
         onTab={setDrawerTab}
         onOpen={setDrawerOpen}
         onSignal={setSignal}

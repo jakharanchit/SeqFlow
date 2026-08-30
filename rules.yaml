@@ -131,6 +131,23 @@ signal_attrs:
 external_refs:
   - criteriaMap
 
+# Attributes holding a duration in seconds — spec 7.6, Phase 4 task 3.
+#
+# The two lists are reported separately and never added into one figure.
+# `waits` is time the sequence spends on purpose; `timeouts` is an upper bound
+# it only reaches when something is slow. On the sample that is 2 minutes of
+# wait against 80 minutes of polling timeout, a ratio of 41, and a reader told
+# "2 minutes" would plan a shift around it.
+#
+# A zero is not a duration. 125 of the sample's 133 elements carry
+# timeoutSeconds="0", so the estimator gates on a non-zero value rather than on
+# the attribute being present — "steps with a timeout" selects all of them.
+durations:
+  waits:
+    - time
+  timeouts:
+    - timeoutSeconds
+
 # Render a target once as a shared terminal, with dotted inbound edges, when
 # more than this many edges converge on it. See spec section 4.5.
 convergence_threshold: 3

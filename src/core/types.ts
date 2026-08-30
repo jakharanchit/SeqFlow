@@ -123,7 +123,19 @@ export interface Rules {
   labels: Record<string, string[]>;
   signalAttrs: string[];
   externalRefs: string[];
+  /**
+   * Attributes holding a duration in seconds. Kept as two lists, never one:
+   * a wait is time the sequence spends on purpose and a timeout is an upper
+   * bound it only reaches when something is slow, and adding them together
+   * produces a figure 41x out on the sample. See spec 7.6.
+   */
+  durations: Durations;
   convergenceThreshold: number;
+}
+
+export interface Durations {
+  waits: string[];
+  timeouts: string[];
 }
 
 /* ------------------------------------------------------------------ */
