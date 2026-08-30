@@ -26,6 +26,19 @@ export interface ElkEdge {
   id: string;
   sources: string[];
   targets: string[];
+  /** Filled in by the layout. One section per edge for a simple edge. */
+  sections?: ElkSection[];
+}
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface ElkSection {
+  startPoint: Point;
+  endPoint: Point;
+  bendPoints?: Point[];
 }
 
 export interface ElkLike {
@@ -177,6 +190,84 @@ export function fromElk(result: ElkNode): Map<string, Positioned> {
   };
 
   walk(result);
+  return out;
+}
+
+/**
+ * The orthogonal route ELK computed for each edge, as an absolute polyline.
+ *
+ * React Flow ignores these and draws its own smoothstep curves, so on screen
+ * they go unused — but the SVG export draws them, which is the whole reason
+ * `elk.edgeRouting: ORTHOGONAL` was worth configuring.
+ *
+ * **The coordinates are not absolute as they arrive.** ELK routes an edge in
+ * the coordinate system of the lowest common ancestor of its two endpoints,
+ * and elkjs then reports every edge on the root node regardless — so the
+ * container an edge is *listed* in says nothing about the frame its points are
+ * in. Reading them as absolute puts a jump between two Pulses 314 px above
+ * where it belongs, and the arrowhead lands in mid-air. This walks the result
+ * tree for absolute node positions, finds each edge's LCA, and adds it.
+ */
+export function edgeRoutes(result: ElkNode): Map<string, Point[]> {
+  /* Absolute position and parent of every node in the result. */
+  const absolute = new Map<string, Point>([[result.id, { x: 0, y: 0 }]]);
+  const parentOf = new Map<string, string>();
+
+  const walkNodes = (node: ElkNode, x: number, y: number): void => {
+    for (const child of node.children ?? []) {
+      const cx = x + (child.x ?? 0);
+      const cy = y + (child.y ?? 0);
+      absolute.set(child.id, { x: cx, y: cy });
+      parentOf.set(child.id, node.id);
+      walkNodes(child, cx, cy);
+    }
+  };
+  walkNodes(result, 0, 0);
+
+  /** Root-first ancestor chain, ending with the node itself. Cycle-guarded. */
+  const chain = (id: string): string[] => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    let cursor: string | undefined = id;
+    while (cursor !== undefined && !seen.has(cursor)) {
+      seen.add(cursor);
+      out.unshift(cursor);
+      cursor = parentOf.get(cursor);
+    }
+    return out;
+  };
+
+  const origin = (a: string, b: string): Point => {
+    const ca = chain(a);
+    const cb = chain(b);
+    let shared: string | null = null;
+    for (let i = 0; i < Math.min(ca.length, cb.length); i++) {
+      if (ca[i] !== cb[i]) break;
+      shared = ca[i] as string;
+    }
+    return (shared === null ? undefined : absolute.get(shared)) ?? { x: 0, y: 0 };
+  };
+
+  const out = new Map<string, Point[]>();
+  const walkEdges = (node: ElkNode): void => {
+    for (const edge of node.edges ?? []) {
+      const src = edge.sources[0];
+      const dst = edge.targets[0];
+      const off = src === undefined || dst === undefined ? { x: 0, y: 0 } : origin(src, dst);
+      const points: Point[] = [];
+      for (const section of edge.sections ?? []) {
+        points.push({ x: section.startPoint.x + off.x, y: section.startPoint.y + off.y });
+        for (const bend of section.bendPoints ?? []) {
+          points.push({ x: bend.x + off.x, y: bend.y + off.y });
+        }
+        points.push({ x: section.endPoint.x + off.x, y: section.endPoint.y + off.y });
+      }
+      if (points.length > 1) out.set(edge.id, points);
+    }
+    for (const child of node.children ?? []) walkEdges(child);
+  };
+  walkEdges(result);
+
   return out;
 }
 

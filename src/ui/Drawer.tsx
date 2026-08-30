@@ -1,9 +1,10 @@
 /**
- * Bottom drawer — spec 7.1. Three tabs: signals, repeats and warnings.
+ * Bottom drawer — spec 7.1. Four tabs: signals, repeats, warnings and export.
  *
- * All three are cross-cutting tables: they answer questions about the whole
- * file rather than about the selected node, which is why they sit under the
- * canvas rather than in the inspector.
+ * The first three are cross-cutting tables: they answer questions about the
+ * whole file rather than about the selected node, which is why they sit under
+ * the canvas rather than in the inspector. Export joined them for the same
+ * reason — Mermaid text is a view of the whole graph, not of a selection.
  *
  * The warnings list used to live in a dismissible banner. A list you can
  * dismiss is a list nobody reads twice, and NFR-6 wants unknown elements
@@ -14,12 +15,26 @@ import { pathLabel } from '../core/ancestry';
 import type { SignalIndex, SignalRow } from '../core/signals';
 import { nodesFor } from '../core/signals';
 import type { Comparison, SimilarGroup } from '../core/similarity';
-import type { Graph, Warning } from '../core/types';
+import type { Graph, Rules, Warning } from '../core/types';
+import type { FlowEdge, FlowNode } from '../emit/flow';
+import type { Point } from '../layout/elkGraph';
+import { Export } from './Export';
 
-export type DrawerTab = 'signals' | 'repeats' | 'warnings';
+export type DrawerTab = 'signals' | 'repeats' | 'warnings' | 'export';
 
 export interface DrawerProps {
   graph: Graph | null;
+  rules: Rules;
+  /** The loaded file name. Names every export. */
+  fileName: string;
+  /** The canvas as it stands, for the image export. */
+  nodes: readonly FlowNode[];
+  edges: readonly FlowEdge[];
+  routes: ReadonlyMap<string, Point[]>;
+  /** True when something on the canvas is dimmed or lit right now. */
+  highlighted: boolean;
+  layoutMode: string;
+  collapsed: ReadonlySet<string>;
   index: SignalIndex;
   rows: SignalRow[];
   warnings: Warning[];
@@ -41,6 +56,14 @@ export interface DrawerProps {
 
 export function Drawer({
   graph,
+  rules,
+  fileName,
+  nodes,
+  edges,
+  routes,
+  highlighted,
+  layoutMode,
+  collapsed,
   index,
   rows,
   warnings,
@@ -61,7 +84,9 @@ export function Drawer({
   const uids = signal === null ? [] : [...nodesFor(index, signal)];
 
   return (
-    <div className={`drawer${open ? ' open' : ''}`}>
+    /* Export needs more room than a signal list: 300 lines of Mermaid read
+       through a 216 px slot is not a preview. */
+    <div className={`drawer${open ? ' open' : ''}${open && tab === 'export' ? ' tall' : ''}`}>
       <div className="drawer-tabs">
         <button
           type="button"
@@ -101,6 +126,19 @@ export function Drawer({
           }}
         >
           Warnings<b>{warnings.length}</b>
+        </button>
+        <button
+          type="button"
+          className={tab === 'export' && open ? 'on' : ''}
+          onClick={() => {
+            if (tab === 'export' && open) onOpen(false);
+            else {
+              onTab('export');
+              onOpen(true);
+            }
+          }}
+        >
+          Export
         </button>
         <div className="spacer" />
         {signal !== null && (
@@ -236,6 +274,18 @@ export function Drawer({
                 )}
               </div>
             </>
+          ) : tab === 'export' ? (
+            <Export
+              graph={graph}
+              rules={rules}
+              fileName={fileName}
+              nodes={nodes}
+              edges={edges}
+              routes={routes}
+              highlighted={highlighted}
+              layoutMode={layoutMode}
+              collapsed={collapsed}
+            />
           ) : (
             <div className="drawer-list wide">
               {warnings.length === 0 ? (

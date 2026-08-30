@@ -22,9 +22,15 @@ import { elementCounts, isActive, matchSet, search } from './core/search';
 import { nodesFor, signalIndex, signalRows } from './core/signals';
 import { compare, similarGroups } from './core/similarity';
 import { asGraph, visibleGraph } from './emit/collapse';
+import {
+  SidecarError,
+  applySidecar,
+  parseSidecar,
+  type Sidecar,
+} from './emit/sidecar';
 import { toFlow, type FlowEdge, type FlowNode } from './emit/flow';
 import { layout } from './layout/elk';
-import type { LayoutMode } from './layout/elkGraph';
+import type { LayoutMode, Point } from './layout/elkGraph';
 import { Canvas, type FocusRequest } from './ui/Canvas';
 import { Drawer, type DrawerTab } from './ui/Drawer';
 import { Inspector } from './ui/Inspector';
@@ -62,6 +68,18 @@ export function App(): React.JSX.Element {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(NO_COLLAPSE);
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [edges, setEdges] = useState<FlowEdge[]>([]);
+  /**
+   * ELK's orthogonal edge routes. React Flow ignores them — it draws its own
+   * smoothstep curves — but the SVG export draws them rather than inventing a
+   * routing of its own.
+   */
+  const [routes, setRoutes] = useState<ReadonlyMap<string, Point[]>>(new Map());
+  /**
+   * A loaded layout sidecar, waiting for the next layout to land. Positions
+   * cannot be applied on arrival: loading one usually changes the mode and the
+   * collapsed set, and that starts a fresh ELK pass that would overwrite them.
+   */
+  const [sidecar, setSidecar] = useState<Sidecar | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
@@ -72,6 +90,13 @@ export function App(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [layoutKey, setLayoutKey] = useState(0);
+  /**
+   * Bumped by Re-layout. Before Phase 3 that button only refit the viewport,
+   * which was harmless while nothing could move a node but a drag nobody kept.
+   * Now a sidecar can, so the button has to mean what its tooltip says: a
+   * fresh ELK pass, discarding every manual position.
+   */
+  const [pass, setPass] = useState(0);
   const [text, setText] = useState('');
   const [elements, setElements] = useState<ReadonlySet<string>>(NO_COLLAPSE);
   const [trace, setTrace] = useState(true);
@@ -84,8 +109,11 @@ export function App(): React.JSX.Element {
   // a newer one.
   const run = useRef(0);
   const focusSeq = useRef(0);
+  /** Read by `loadLayout`, which must not be rebuilt every time the graph is. */
+  const graphRef = useRef<Graph | null>(null);
 
   const graph = loaded?.graph ?? null;
+  graphRef.current = graph;
 
   /** The graph as the canvas currently shows it: collapsed sequences folded. */
   const view = useMemo(
@@ -126,6 +154,7 @@ export function App(): React.JSX.Element {
     if (graph === null || view === null) {
       setNodes([]);
       setEdges([]);
+      setRoutes(new Map());
       return;
     }
     const ticket = ++run.current;
@@ -137,8 +166,30 @@ export function App(): React.JSX.Element {
     void layout(flow.nodes, flow.edges, mode)
       .then((placed) => {
         if (ticket !== run.current) return;
-        setNodes(placed.nodes);
+        // A saved arrangement wins over the fresh one, node by node. A uid the
+        // sidecar does not mention keeps its ELK position rather than piling up
+        // at the origin; a uid this file does not have is reported, not fatal.
+        let laid = placed.nodes;
+        if (sidecar !== null) {
+          const restored = applySidecar(placed.nodes, sidecar);
+          laid = restored.nodes;
+          if (restored.unknown.length > 0) {
+            setWarnings((current) => [
+              ...current,
+              {
+                code: 'UNRESOLVED_TARGET' as const,
+                uid: '',
+                message: `layout file: ${restored.unknown.length} saved position${restored.unknown.length === 1 ? ' is' : 's are'} for steps this sequence no longer has, and ${restored.unknown.length === 1 ? 'was' : 'were'} dropped. ${restored.placed} restored.`,
+              },
+            ]);
+            setDrawerTab('warnings');
+            setDrawerOpen(true);
+          }
+          setSidecar(null);
+        }
+        setNodes(laid);
         setEdges(flow.edges);
+        setRoutes(placed.routes);
         setElapsedMs(placed.elapsedMs);
         setLayoutKey((k) => k + 1);
       })
@@ -149,7 +200,7 @@ export function App(): React.JSX.Element {
       .finally(() => {
         if (ticket === run.current) setBusy(false);
       });
-  }, [graph, view, mode]);
+  }, [graph, view, mode, sidecar, pass]);
 
   const load = useCallback((xml: string, fileName: string): void => {
     setBusy(true);
@@ -182,6 +233,33 @@ export function App(): React.JSX.Element {
     }
   }, []);
 
+  /**
+   * A layout sidecar — spec 7.8. The mode and the collapsed set land now; the
+   * positions wait for the layout pass those two changes are about to start.
+   */
+  const loadLayout = useCallback(
+    (text: string, fileName: string): void => {
+      if (graphRef.current === null) {
+        setError(`${fileName}: load a sequence first, then its layout file`);
+        setDismissed(false);
+        return;
+      }
+      try {
+        const parsed = parseSidecar(text);
+        setMode(parsed.mode === 'compact' ? 'compact' : 'grouped');
+        setCollapsed(new Set(parsed.collapsed));
+        setSidecar(parsed);
+        setError(null);
+      } catch (err) {
+        setError(
+          `${fileName}: ${err instanceof SidecarError || err instanceof Error ? err.message : 'could not be read'}`,
+        );
+        setDismissed(false);
+      }
+    },
+    [],
+  );
+
   /* Drag and drop, anywhere on the page. */
   useEffect(() => {
     const over = (e: DragEvent): void => {
@@ -198,7 +276,12 @@ export function App(): React.JSX.Element {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
-        load(String(reader.result ?? ''), file.name);
+        const text = String(reader.result ?? '');
+        // A layout sidecar and a sequence both arrive by drop; the extension
+        // is what tells them apart, and a mislabelled one fails loudly rather
+        // than being fed to the XML parser.
+        if (/\.json$/i.test(file.name)) loadLayout(text, file.name);
+        else load(text, file.name);
       };
       reader.onerror = () => setError(`${file.name}: could not be read`);
       reader.readAsText(file);
@@ -257,7 +340,11 @@ export function App(): React.JSX.Element {
 
   const expandAll = useCallback((): void => setCollapsed(NO_COLLAPSE), []);
 
-  const relayout = useCallback((): void => setLayoutKey((k) => k + 1), []);
+  /** Its tooltip promises manual positions are discarded, so discard them. */
+  const relayout = useCallback((): void => {
+    setSidecar(null);
+    setPass((p) => p + 1);
+  }, []);
 
   const onNodesChange = useCallback((changes: unknown[]): void => {
     setNodes(
@@ -401,6 +488,22 @@ export function App(): React.JSX.Element {
         >
           {busy ? 'Laying out…' : 'Re-layout'}
         </button>
+
+        <button
+          type="button"
+          className={`tool${drawerOpen && drawerTab === 'export' ? ' on' : ''}`}
+          disabled={graph === null}
+          onClick={() => {
+            if (drawerOpen && drawerTab === 'export') setDrawerOpen(false);
+            else {
+              setDrawerTab('export');
+              setDrawerOpen(true);
+            }
+          }}
+          title="Mermaid text for Git and documentation"
+        >
+          Export
+        </button>
       </header>
 
       {showBanner && (
@@ -469,6 +572,14 @@ export function App(): React.JSX.Element {
 
       <Drawer
         graph={graph}
+        rules={rules}
+        fileName={loaded?.fileName ?? 'sequence.xml'}
+        nodes={renderNodes}
+        edges={renderEdges}
+        routes={routes}
+        highlighted={highlight !== null || matches !== null || spotlight !== null}
+        layoutMode={mode}
+        collapsed={collapsed}
         index={index}
         rows={signals}
         warnings={warnings}

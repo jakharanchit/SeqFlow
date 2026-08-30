@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "mermaid": "node bin/seqviz.mjs"
   },
   "dependencies": {
     "@xyflow/react": "^12.3.5",

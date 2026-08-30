@@ -16,11 +16,13 @@ import ElkWorker from 'elkjs/lib/elk-worker.min.js?worker&inline';
 import type { FlowEdge, FlowNode } from '../emit/flow';
 import {
   applyLayout,
+  edgeRoutes,
   fromElk,
   nodesForMode,
   toElk,
   type ElkLike,
   type LayoutMode,
+  type Point,
 } from './elkGraph';
 
 let instance: ElkLike | null = null;
@@ -36,6 +38,12 @@ function elk(): ElkLike {
 
 export interface LayoutResult {
   nodes: FlowNode[];
+  /**
+   * Edge id -> ELK's orthogonal polyline, in absolute coordinates. The canvas
+   * ignores these — React Flow draws its own smoothstep curves — but the SVG
+   * export draws them rather than inventing a routing of its own.
+   */
+  routes: Map<string, Point[]>;
   /** Wall-clock ms, for the status bar. NFR-5 budgets 2 s. */
   elapsedMs: number;
 }
@@ -54,6 +62,7 @@ export async function layout(
   const result = await elk().layout(toElk(subject, edges, mode));
   return {
     nodes: applyLayout(subject, fromElk(result)),
+    routes: edgeRoutes(result),
     elapsedMs: Math.round(performance.now() - started),
   };
 }
