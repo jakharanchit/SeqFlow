@@ -159,9 +159,11 @@ export function App(): React.JSX.Element {
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [edges, setEdges] = useState<FlowEdge[]>([]);
   /**
-   * ELK's orthogonal edge routes. React Flow ignores them — it draws its own
-   * smoothstep curves — but the SVG export draws them rather than inventing a
-   * routing of its own.
+   * ELK's orthogonal edge routes, by edge id.
+   *
+   * Both the canvas and the SVG export draw these, which is what keeps the two
+   * pictures the same. Letting React Flow route its own edges put a straight
+   * line through every node a jump skipped — see ui/edges.tsx.
    */
   const [routes, setRoutes] = useState<ReadonlyMap<string, Point[]>>(new Map());
   /**
@@ -215,6 +217,8 @@ export function App(): React.JSX.Element {
   const focusSeq = useRef(0);
   /** Read by `loadLayout`, which must not be rebuilt every time the graph is. */
   const graphRef = useRef<Graph | null>(null);
+  /** Read by `onNodesChange`, which must not be rebuilt on every layout. */
+  const edgesRef = useRef<readonly FlowEdge[]>([]);
   /**
    * The last sequence XML as text, so a newly dropped rule file can re-parse
    * it. Kept in a ref rather than state: nothing renders from it, and it must
@@ -799,6 +803,29 @@ export function App(): React.JSX.Element {
       (current) =>
         applyNodeChanges(changes as NodeChange[], current as never) as unknown as FlowNode[],
     );
+
+    // A dragged node invalidates the routes that end on it, and only those.
+    //
+    // ELK routed those edges around an arrangement that no longer holds, so
+    // drawing them would leave a line ending in open space. Dropping them lets
+    // those edges fall back to a smoothstep curve, which at least still joins
+    // the two nodes; every other edge keeps the routing ELK computed. Re-layout
+    // brings them all back.
+    const moved = new Set(
+      (changes as NodeChange[])
+        .filter((c): c is NodeChange & { id: string } => c.type === 'position' && 'id' in c)
+        .map((c) => c.id),
+    );
+    if (moved.size === 0) return;
+    setRoutes((current) => {
+      const next = new Map(current);
+      let dropped = false;
+      for (const edge of edgesRef.current) {
+        if (!moved.has(edge.source) && !moved.has(edge.target)) continue;
+        if (next.delete(edge.id)) dropped = true;
+      }
+      return dropped ? next : current;
+    });
   }, []);
 
   /**
@@ -964,7 +991,34 @@ export function App(): React.JSX.Element {
         ]
           .filter(Boolean)
           .join(' ');
-        return (e.className ?? '') === className ? e : { ...e, className };
+
+        // The stroke is set here, not in a stylesheet.
+        //
+        // `toFlow` writes stroke and width as an *inline* style, and an inline
+        // declaration beats any rule a class can carry — so every highlight
+        // rule for an edge lost silently, including the on-path thickening that
+        // has been in styles.css since Phase 2 and never once applied. The UI
+        // owns highlighting, so the UI computes the final stroke; the emitter
+        // still supplies the colour an unhighlighted edge gets by reason.
+        //
+        // The colours stay in the stylesheet as custom properties, so the two
+        // path directions are defined in exactly one place.
+        const stroke =
+          direction === 'path-up'
+            ? 'var(--path-up)'
+            : direction === 'path-down'
+              ? 'var(--path-down)'
+              : onPath
+                ? 'var(--accent)'
+                : e.style.stroke;
+        const width = onPath ? 2.4 : e.style.strokeWidth;
+        const restyled =
+          stroke === e.style.stroke && width === e.style.strokeWidth
+            ? e.style
+            : { ...e.style, stroke, strokeWidth: width };
+
+        if ((e.className ?? '') === className && restyled === e.style) return e;
+        return { ...e, className, style: restyled };
       }),
     [edges, matches, spotlight, criterionLight, failLight, highlight, diff],
   );
@@ -975,6 +1029,8 @@ export function App(): React.JSX.Element {
     if (baseline === null) return loaded.snippets;
     return new Map([...baseline.snippets, ...loaded.snippets]);
   }, [loaded, baseline]);
+
+  edgesRef.current = edges;
 
   const showBanner = !dismissed && error !== null;
   const visibleCount = view?.nodes.size ?? 0;
@@ -1117,6 +1173,7 @@ export function App(): React.JSX.Element {
               <Canvas
                 nodes={renderNodes}
                 edges={renderEdges}
+                routes={routes}
                 onNodesChange={onNodesChange}
                 onSelect={setSelected}
                 onToggle={toggle}

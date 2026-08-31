@@ -65,9 +65,9 @@ function elk(): ElkLike {
 export interface LayoutResult {
   nodes: FlowNode[];
   /**
-   * Edge id -> ELK's orthogonal polyline, in absolute coordinates. The canvas
-   * ignores these — React Flow draws its own smoothstep curves — but the SVG
-   * export draws them rather than inventing a routing of its own.
+   * Edge id -> ELK's orthogonal polyline, in absolute coordinates. Both the
+   * canvas and the SVG export draw these rather than inventing a routing of
+   * their own, which is what keeps the two pictures the same.
    */
   routes: Map<string, Point[]>;
   /** Wall-clock ms, for the status bar. NFR-5 budgets 2 s. */

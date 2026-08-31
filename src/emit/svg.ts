@@ -2,7 +2,7 @@
  * Laid-out graph -> SVG. Phase 3 task 4.
  *
  * The fork this task named was DOM or graph, and this is the graph. Serialising
- * the React Flow canvas would preserve its smoothstep curves for free, but the
+ * the React Flow canvas would preserve its own rendering for free, but the
  * shapes there are CSS `clip-path` and the colours are custom properties, so
  * every style would have to be inlined anyway — and the result would need a
  * browser, which puts the whole of Phase 3's most testable output out of reach
@@ -36,6 +36,9 @@ export interface Palette {
   textDim: string;
   textFaint: string;
   accent: string;
+  /** Upstream and downstream of the traced step, told apart. */
+  pathUp: string;
+  pathDown: string;
   action: string;
   decision: string;
   criteria: string;
@@ -58,6 +61,8 @@ export const DARK: Palette = {
   textDim: '#98a1b2',
   textFaint: '#6b7688',
   accent: '#5aa2e8',
+  pathUp: '#4f9d76',
+  pathDown: '#d08a3c',
   action: '#3c86c9',
   decision: '#c98f2e',
   criteria: '#cf5b52',
@@ -82,6 +87,8 @@ export const LIGHT: Palette = {
   textDim: '#4d5766',
   textFaint: '#6b7688',
   accent: '#2f6fb5',
+  pathUp: '#3d7a5b',
+  pathDown: '#a86b25',
   action: '#2f6fb5',
   decision: '#9a6c12',
   criteria: '#b03a31',
@@ -335,6 +342,18 @@ export function toSvg(
     honour && (className ?? '').includes('dimmed');
   const onPath = (className: string | undefined): boolean =>
     honour && (className ?? '').includes('on-path');
+  /**
+   * Which side of the traced step this is on, if either. The canvas colours
+   * the two directions differently, and an export that flattened them back to
+   * one accent would be a picture of a different question than the one on
+   * screen.
+   */
+  const direction = (className: string | undefined): 'up' | 'down' | null => {
+    const value = honour ? (className ?? '') : '';
+    if (value.includes('path-up')) return 'up';
+    if (value.includes('path-down')) return 'down';
+    return null;
+  };
 
   const out: string[] = [];
   out.push(
@@ -389,8 +408,11 @@ export function toSvg(
     const dashed = ghost || edge.style.strokeDasharray !== undefined;
     const opacity = faded ? 0.16 : ghost ? 0.45 : null;
 
+    const side = direction(edge.className);
+    const litColour = side === 'up' ? p.pathUp : side === 'down' ? p.pathDown : p.accent;
+
     out.push(
-      `<polyline points="${polyline(points)}" fill="none" stroke="${lit ? p.accent : ghost ? p.removed : colour}" stroke-width="${lit ? 2.4 : edge.style.strokeWidth}"${dashed ? ` stroke-dasharray="${ghost ? '3 5' : '5 4'}"` : ''}${opacity === null ? '' : ` opacity="${opacity}"`} marker-end="url(#a-${reason})"/>`,
+      `<polyline points="${polyline(points)}" fill="none" stroke="${lit ? litColour : ghost ? p.removed : colour}" stroke-width="${lit ? 2.4 : edge.style.strokeWidth}"${dashed ? ` stroke-dasharray="${ghost ? '3 5' : '5 4'}"` : ''}${opacity === null ? '' : ` opacity="${opacity}"`} marker-end="url(#a-${reason})"/>`,
     );
 
     if (edge.label !== undefined && !faded) {

@@ -23,7 +23,8 @@ import '@xyflow/react/dist/style.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { EDGE_COLOR, type FlowEdge, type FlowNode, type FlowNodeData } from '../emit/flow';
-import { fitZoom, graphBounds } from '../layout/elkGraph';
+import { fitZoom, graphBounds, type Point } from '../layout/elkGraph';
+import { RouteContext, edgeTypes } from './edges';
 import { nodeTypes } from './nodes';
 
 /**
@@ -69,6 +70,12 @@ const KIND_COLOR: Record<string, string> = {
 export interface CanvasProps {
   nodes: FlowNode[];
   edges: FlowEdge[];
+  /**
+   * ELK's orthogonal routes, by edge id. The canvas draws these rather than
+   * letting React Flow invent a path, which is what keeps it agreeing with the
+   * SVG export. Empty means every edge falls back to a smoothstep curve.
+   */
+  routes: ReadonlyMap<string, Point[]>;
   onNodesChange: (changes: unknown[]) => void;
   onSelect: (uid: string | null) => void;
   /** Collapse or expand a sequence. Double-clicking one is the canvas gesture. */
@@ -82,6 +89,7 @@ export interface CanvasProps {
 export function Canvas({
   nodes,
   edges,
+  routes,
   onNodesChange,
   onSelect,
   onToggle,
@@ -340,10 +348,12 @@ export function Canvas({
 
   return (
     <div className={`canvas${far ? ' far' : ''}`} ref={wrap}>
+      <RouteContext.Provider value={routes}>
       <ReactFlow
         nodes={nodes as unknown as Node[]}
         edges={edges as unknown as Edge[]}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodesChange={onNodesChange as never}
         onNodeClick={handleNodeClick}
         onNodeDoubleClick={handleNodeDoubleClick}
@@ -365,7 +375,7 @@ export function Canvas({
         // this: MIN_ZOOM still pulls back far enough to see the whole column.
         translateExtent={translateExtent}
         proOptions={{ hideAttribution: true }}
-        defaultEdgeOptions={{ type: 'smoothstep' }}
+        defaultEdgeOptions={{ type: 'routed' }}
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#252b36" />
         {/* The fit button uses the same computed fit, not React Flow's. */}
@@ -380,6 +390,7 @@ export function Canvas({
           }}
         />
       </ReactFlow>
+      </RouteContext.Provider>
     </div>
   );
 }

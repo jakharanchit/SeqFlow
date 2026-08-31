@@ -82,7 +82,11 @@ export interface FlowEdge {
   id: string;
   source: string;
   target: string;
-  type: 'smoothstep';
+  /**
+   * Always `routed` — the canvas edge that follows ELK's own polyline, falling
+   * back to a smoothstep curve when there is no route for it. See ui/edges.tsx.
+   */
+  type: 'routed';
   label?: string;
   data: FlowEdgeData;
   style: { stroke: string; strokeWidth: number; strokeDasharray?: string };
@@ -218,7 +222,7 @@ export function toFlow(graph: Graph, rules: Rules, opts: FlowOptions = {}): Flow
       id: `e${i}-${e.src}-${e.dst}`,
       source: e.src,
       target: e.dst,
-      type: 'smoothstep' as const,
+      type: 'routed' as const,
       ...(e.label === undefined ? {} : { label: e.label }),
       data: { reason: e.reason, convergent: isConvergent },
       style: {

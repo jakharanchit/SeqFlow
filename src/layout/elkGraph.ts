@@ -196,9 +196,10 @@ export function fromElk(result: ElkNode): Map<string, Positioned> {
 /**
  * The orthogonal route ELK computed for each edge, as an absolute polyline.
  *
- * React Flow ignores these and draws its own smoothstep curves, so on screen
- * they go unused — but the SVG export draws them, which is the whole reason
- * `elk.edgeRouting: ORTHOGONAL` was worth configuring.
+ * The canvas and the SVG export both draw these, which is the whole reason
+ * `elk.edgeRouting: ORTHOGONAL` was worth configuring. Left to itself React
+ * Flow routes handle to handle and puts a straight line through every node a
+ * jump skips — see `ui/edges.tsx`.
  *
  * **The coordinates are not absolute as they arrive.** ELK routes an edge in
  * the coordinate system of the lowest common ancestor of its two endpoints,

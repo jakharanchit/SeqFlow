@@ -567,6 +567,31 @@ pre.xml {
   fill: var(--bg);
 }
 
+/*
+ * The routed edge draws its own label through EdgeLabelRenderer, because it
+ * places it at the midpoint of ELK's polyline rather than of a straight line
+ * between the two ends — on a route that goes out to the side and back those
+ * are far apart, and the straight-line midpoint lands on top of whatever the
+ * edge was routed around.
+ */
+.edge-label {
+  position: absolute;
+  padding: 0 3px;
+  background: var(--bg);
+  border-radius: 2px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 9px;
+  line-height: 13px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.react-flow__edge.dimmed + .edge-label,
+.canvas.far .edge-label {
+  display: none;
+}
+
 .react-flow__attribution {
   display: none;
 }
