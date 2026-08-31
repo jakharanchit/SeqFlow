@@ -24,7 +24,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # bin/seqflow.mjs uses node:module's registerHooks, which needs 22.15+
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm test

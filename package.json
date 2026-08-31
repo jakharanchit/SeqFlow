@@ -4,6 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Test sequence XML to interactive flowchart. Read-only.",
+  "engines": {
+    "node": ">=22.15.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -29,6 +32,6 @@
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
     "vite-plugin-singlefile": "^2.0.3",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.11"
   }
 }
