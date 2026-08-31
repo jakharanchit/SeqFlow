@@ -14,9 +14,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "tsc --noEmit",
-    "mermaid": "node bin/seqflow.mjs"
+    "mermaid": "node bin/seqflow.mjs",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
     "@xyflow/react": "^12.3.5",
     "elkjs": "^0.9.3",
     "react": "^19.0.0",
@@ -24,6 +28,7 @@
     "yaml": "^2.6.1"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^26.4.0",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.1",
