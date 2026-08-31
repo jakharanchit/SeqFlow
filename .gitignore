@@ -4,6 +4,9 @@ node_modules/
 # Build output — `npm run build` regenerates dist/index.html
 dist/
 
+# electron-builder output
+release/
+
 # Claude Code working docs: CLAUDE.md, the spec, the task list, launch.json
 .claude/
 

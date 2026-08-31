@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Test sequence XML to interactive flowchart. Read-only.",
+  "main": "electron/main.cjs",
   "engines": {
     "node": ">=22.15.0"
   },
@@ -14,7 +15,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "tsc --noEmit",
-    "mermaid": "node bin/seqflow.mjs"
+    "mermaid": "node bin/seqflow.mjs",
+    "electron": "npm run build && electron .",
+    "electron:dist": "npm run build && electron-builder",
+    "electron:package": "npm run build && electron-packager . SeqFlow --platform=win32 --arch=x64 --out=release --overwrite"
   },
   "dependencies": {
     "@xyflow/react": "^12.3.5",
@@ -29,9 +33,26 @@
     "@types/react-dom": "^19.0.1",
     "@vitejs/plugin-react": "^4.3.4",
     "@xmldom/xmldom": "^0.9.6",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "electron-packager": "^17.1.2",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
     "vite-plugin-singlefile": "^2.0.3",
     "vitest": "^4.1.11"
+  },
+  "build": {
+    "appId": "com.seqflow.app",
+    "productName": "SeqFlow",
+    "files": [
+      "electron/**/*",
+      "dist/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis"
+    }
   }
 }
