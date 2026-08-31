@@ -45,9 +45,23 @@ export function childElements(el: Element): Element[] {
   return out;
 }
 
-/** Holds other steps, per the rule file. */
+/**
+ * Holds other steps: named by the rule file, or holding uid-bearing children
+ * whatever the rule file says.
+ *
+ * The second clause is what lets an unfamiliar file render at all. Without it
+ * an unrecognised wrapper is a leaf, its children are never walked, and
+ * `nextSiblingLeaf` routes the flow straight past steps that exist — a silent
+ * loss, which invariant 7 forbids. It also matters for jump resolution: rule
+ * 4.3 descends a target to its first leaf, and a target that is a container
+ * only in fact would otherwise resolve to the group box itself.
+ *
+ * `parse.ts` raises UNKNOWN_CONTAINER when the two clauses disagree, so the
+ * inference is always visible rather than quietly papering over a rule file
+ * that has fallen behind its schema.
+ */
 export function isContainer(el: Element, rules: Rules): boolean {
-  return rules.containers.includes(tagOf(el));
+  return rules.containers.includes(tagOf(el)) || holdsStepChildren(el, rules);
 }
 
 /** Produces no node — structural or inspector-only, per the rule file. */
@@ -71,6 +85,19 @@ export function stepChildren(el: Element, rules: Rules): Element[] {
 }
 
 /**
+ * Whether an element holds children that will become nodes.
+ *
+ * This is the file's own answer to "is this a container", read off the
+ * document rather than the rule file. An element the rules call a leaf that
+ * answers true here is a container in fact, and `parse.ts` walks it as one:
+ * the alternative is to drop its whole subtree in silence, which invariant 7
+ * forbids. See the UNKNOWN_CONTAINER warning.
+ */
+export function holdsStepChildren(el: Element, rules: Rules): boolean {
+  return stepChildren(el, rules).some((c) => uidOf(c) !== '');
+}
+
+/**
  * Descend a container to its first executable leaf, recursively (spec 4.3).
  * Returns `el` itself when it is already a leaf, or null for an empty
  * container. Cycle-guarded, though a well-formed XML tree cannot cycle.
@@ -88,6 +115,40 @@ export function firstLeaf(el: Element, rules: Rules): Element | null {
     const kids: Element[] = stepChildren(current, rules);
     const next: Element | undefined = kids[0];
     if (next === undefined) return null; // empty container
+    current = next;
+  }
+  return null;
+}
+
+/**
+ * Descend a container to its *last* executable leaf, the mirror of
+ * {@link firstLeaf}. Only a loop back edge needs this: the edge runs from
+ * where a repetition ends to where the next one starts.
+ */
+export function lastLeaf(el: Element, rules: Rules): Element | null {
+  const seen = new Set<Element>();
+  let current: Element | null = el;
+
+  while (current !== null) {
+    if (seen.has(current)) return null;
+    seen.add(current);
+
+    if (!isContainer(current, rules)) return current;
+
+    // Walk backwards: the last child may be an empty container, which is not
+    // where a repetition ends.
+    const kids: Element[] = stepChildren(current, rules);
+    let next: Element | null = null;
+    for (let i = kids.length - 1; i >= 0; i--) {
+      const candidate = kids[i];
+      if (candidate === undefined) continue;
+      const leaf = lastLeaf(candidate, rules);
+      if (leaf !== null) {
+        next = leaf;
+        break;
+      }
+    }
+    if (next === null) return null;
     current = next;
   }
   return null;

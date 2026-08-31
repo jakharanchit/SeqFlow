@@ -86,7 +86,7 @@ describe('the text export reconciles with the graph', () => {
     expect(rows).toHaveLength(146);
     expect(numbered).toHaveLength(144);
     const top = rows.filter((r) => r.indent === 0);
-    expect(top.map((r) => r.name)).toEqual(['HLB Battery ESR', 'Abort']);
+    expect(top.map((r) => r.name)).toEqual(['XTR Module Test', 'Abort']);
     expect(top.every((r) => r.number === '')).toBe(true);
   });
 
@@ -94,7 +94,7 @@ describe('the text export reconciles with the graph', () => {
    * The reconciliation, and the reason this file exists:
    *
    *     144 numbered rows
-   *     − 12 Comparison rows   (4 pulses × 3 conditions)
+   *     − 12 Comparison rows   (4 cycles × 3 conditions)
    *     = 132 = 133 nodes − 1 unnumbered root
    *
    * Exact, with nothing left over.
@@ -110,7 +110,7 @@ describe('the text export reconciles with the graph', () => {
   it('names the root, and Abort has no counterpart in the XML', () => {
     // The tool shows the outer Sequence as the document title rather than as
     // step 1, which is why its children are 1, 2, 3 and it is unnumbered.
-    expect(graph.nodes.get(graph.root)?.name).toBe('HLB Battery ESR');
+    expect(graph.nodes.get(graph.root)?.name).toBe('XTR Module Test');
     // `Abort` is a concept of the tool's tree view that this file does not
     // serialise — there is no such element anywhere in the XML. Recorded
     // rather than explained away; it goes to spec Q1 with the four empty
@@ -129,11 +129,11 @@ describe('the text export reconciles with the graph', () => {
   });
 
   it('agrees with numberedName, separator included', () => {
-    const pulse = byNumber.get('2.1.6.7');
-    expect(pulse?.name).toBe('6C Pulse (10s)');
-    expect(numberedName(pulse!)).toBe('2.1.6.7 - 6C Pulse (10s)');
+    const cycle = byNumber.get('2.1.6.7');
+    expect(cycle?.name).toBe('4R Cycle (10s)');
+    expect(numberedName(cycle!)).toBe('2.1.6.7 - 4R Cycle (10s)');
     // The root falls back to the bare name rather than printing a stray dash.
-    expect(numberedName(graph.nodes.get(graph.root)!)).toBe('HLB Battery ESR');
+    expect(numberedName(graph.nodes.get(graph.root)!)).toBe('XTR Module Test');
   });
 
   it('numbers every node exactly once, with no collisions', () => {
@@ -167,7 +167,7 @@ describe('the 12 rows we do not model as nodes', () => {
       expect(comparisons, `${parentNumber(row.number)} carries no Comparison`).toHaveLength(1);
       expect(comparisons![0]!['name']).toBe(row.name);
 
-      // The export renders the condition as `Is "PackVoltage" >= 53.2?`. The
+      // The export renders the condition as `Is "UnitReading" >= 24.7?`. The
       // tag is a display name we cannot derive, but the value is verbatim —
       // so the value is what this asserts.
       expect(row.description).toContain(comparisons![0]!['value']);
@@ -201,7 +201,7 @@ describe('jump targets, as the export quotes them', () => {
 
   /**
    * The sharpest assertion available. The export names `2.1.3 - Battery
-   * Temperature Check`, which is a `Sequence`; we emit an edge to its first
+   * Thermal Gate Test`, which is a `Sequence`; we emit an edge to its first
    * leaf, `2.1.3.1`. A parser that pointed the edge at the Sequence itself, or
    * that read a stale target attribute, fails here.
    */

@@ -20,6 +20,7 @@ import {
   firstLeaf,
   isContainer,
   isIgnored,
+  lastLeaf,
   nextSiblingLeaf,
   resolveTarget,
   stepChildren,
@@ -89,10 +90,21 @@ function topLevel(doc: Document, rules: Rules): Element[] {
   const root = doc.documentElement;
   if (!root) throw new ParseError('document has no root element');
   if (uidOf(root) !== '') return [root];
-  const kids = stepChildren(root, rules);
+
+  // A child of the document element starts the flow only if it can produce a
+  // node or descend to one: it carries a uid, or it holds children that do.
+  // A uid-less, childless sibling is document furniture — a temperature
+  // profile, a revision block — and treating it as a root makes the file look
+  // like it has two.
+  const all = stepChildren(root, rules);
+  const kids = all.filter((el) => uidOf(el) !== '' || isContainer(el, rules));
   if (kids.length === 0) {
+    const seen = [...new Set(all.map(tagOf))];
     throw new ParseError(
-      `document element <${tagOf(root)}> contains no steps — is this a test sequence?`,
+      `document element <${tagOf(root)}> contains no steps — is this a test sequence? ` +
+        (seen.length === 0
+          ? 'it has no element children'
+          : `it holds ${seen.join(', ')}, none of which carry a uid or hold steps`),
     );
   }
   return kids;
@@ -120,12 +132,24 @@ function childAttrsOf(
   if (wanted === undefined || wanted.length === 0) return undefined;
 
   const out: Record<string, Record<string, string>[]> = {};
-  for (const child of childElements(el)) {
-    const name = tagOf(child);
-    if (!wanted.includes(name)) continue;
-    const bucket = out[name] ?? (out[name] = []);
-    bucket.push(attrsOf(child));
-  }
+
+  // Depth-first, because the element carrying the detail is often wrapped:
+  // <UserInputBoolean><Message><Text text="…"/></Message></UserInputBoolean>,
+  // and the fixture's own <DynamicName><Text text="…"/></DynamicName>. The
+  // walk stops at anything that produces its own node, so a nested step's
+  // attributes are never attributed to an ancestor.
+  const walk = (parent: Element): void => {
+    for (const child of childElements(parent)) {
+      const name = tagOf(child);
+      if (wanted.includes(name)) {
+        const bucket = out[name] ?? (out[name] = []);
+        bucket.push(attrsOf(child));
+      }
+      if (uidOf(child) === '') walk(child);
+    }
+  };
+  walk(el);
+
   return Object.keys(out).length === 0 ? undefined : out;
 }
 
@@ -145,12 +169,34 @@ function walkNodes(roots: Element[], rules: Rules): WalkResult {
   const warnings: Warning[] = [];
   const knownSteps = rules.steps;
 
-  const visit = (el: Element, parent: string | null, depth: number): string | null => {
+  /**
+   * Returns the uids this element contributes to its parent's child list.
+   * Normally one; none for an element that cannot be given an identity, and
+   * several for a uid-less container, which is transparent (see below).
+   */
+  const visit = (el: Element, parent: string | null, depth: number): string[] => {
     const uid = uidOf(el);
     const name = el.getAttribute('name') ?? '';
+    const container = isContainer(el, rules);
+
+    // A uid-less container is transparent: it gets no node of its own — IDs
+    // are the uid and are never derived (invariant 3) — but its children are
+    // the flow and are walked into the enclosing parent at the same depth.
+    //
+    // This is what a wrapper element looks like. The shipped fixture's
+    // <TestSequence> is the document element, where `topLevel` steps over it;
+    // in another dialect the same element sits one level down inside a
+    // <TestSpecification>, and dropping it there discards the whole document.
+    if (uid === '' && container) {
+      const lifted: string[] = [];
+      for (const child of stepChildren(el, rules)) {
+        lifted.push(...visit(child, parent, depth));
+      }
+      return lifted;
+    }
 
     if (uid === '') {
-      // No uid means no identity, and IDs are never derived (invariant 3).
+      // No uid, no children to lift: no identity and nothing to descend to.
       // Warn rather than drop it silently (NFR-6).
       warnings.push({
         code: 'UNKNOWN_ELEMENT',
@@ -159,14 +205,27 @@ function walkNodes(roots: Element[], rules: Rules): WalkResult {
           `<${tagOf(el)}>${name ? ` "${name}"` : ''} has no uid attribute and ` +
           'cannot be given a node identity — skipped',
       });
-      return null;
+      return [];
     }
 
-    const container = isContainer(el, rules);
+    const declared = rules.containers.includes(tagOf(el));
 
-    // An element the rule file does not recognise still renders, with the
-    // default shape, and is collected as a warning. Spec section 3, NFR-6.
-    if (knownSteps !== undefined && !container && !knownSteps.includes(tagOf(el))) {
+    if (!declared && container) {
+      // The rule file calls this a leaf and the file holds steps inside it.
+      // Walked as a container regardless, because the alternative loses the
+      // subtree in silence — but the disagreement is reported, not absorbed.
+      warnings.push({
+        code: 'UNKNOWN_CONTAINER',
+        uid,
+        message:
+          `<${tagOf(el)}>${name ? ` "${name}"` : ''} holds ` +
+          `${stepChildren(el, rules).filter((c) => uidOf(c) !== '').length} child ` +
+          'step(s) but is not listed as a container — walked as one. Add it to ' +
+          '`containers` in rules.yaml',
+      });
+    } else if (knownSteps !== undefined && !container && !knownSteps.includes(tagOf(el))) {
+      // An element the rule file does not recognise still renders, with the
+      // default shape, and is collected as a warning. Spec section 3, NFR-6.
       warnings.push({
         code: 'UNKNOWN_ELEMENT',
         uid,
@@ -204,14 +263,11 @@ function walkNodes(roots: Element[], rules: Rules): WalkResult {
         });
       }
       const childUids: string[] = [];
-      for (const child of kids) {
-        const childUid = visit(child, uid, depth + 1);
-        if (childUid !== null) childUids.push(childUid);
-      }
+      for (const child of kids) childUids.push(...visit(child, uid, depth + 1));
       containers.set(uid, childUids);
     }
 
-    return uid;
+    return [uid];
   };
 
   for (const root of roots) visit(root, null, 1);
@@ -317,6 +373,8 @@ function buildEdges(
     });
   }
 
+  edges.push(...loopEdges(nodes, index, rules));
+
   // Deterministic order. Invariant 6, and the basis of stable Mermaid output.
   edges.sort((a, b) => {
     const ka = `${a.src}|${a.reason}|${a.dst}`;
@@ -324,6 +382,52 @@ function buildEdges(
     return ka < kb ? -1 : ka > kb ? 1 : 0;
   });
   return edges;
+}
+
+/**
+ * Back edges for repeating containers — `loops:` in the rule file.
+ *
+ * One edge per loop, from where a repetition ends to where the next one
+ * starts, labelled with the iteration count when the rule file names an
+ * attribute holding it. The loop's last leaf still falls through as well:
+ * a loop with a count exits, and both edges are real.
+ *
+ * `reason: 'loop'` is what makes this affordable. It marks the one edge in
+ * the graph that closes a cycle, so `duration.ts` can leave it out of the
+ * path arithmetic while the canvas, the SVG and the Mermaid output all draw
+ * it like any other edge.
+ */
+function loopEdges(
+  nodes: Map<string, SeqNode>,
+  index: Map<string, Element>,
+  rules: Rules,
+): SeqEdge[] {
+  const out: SeqEdge[] = [];
+
+  for (const node of nodes.values()) {
+    const rule = rules.loops[node.element];
+    if (rule === undefined) continue;
+    const el = index.get(node.uid);
+    if (el === undefined) continue;
+
+    const first = firstLeaf(el, rules);
+    const last = lastLeaf(el, rules);
+    if (first === null || last === null) continue;
+    // A one-step loop would be a self-edge, which reads as a mistake rather
+    // than as repetition; the count on the container's own label says it.
+    if (first === last) continue;
+
+    const count = rule.count === undefined ? '' : (el.getAttribute(rule.count) ?? '');
+    out.push({
+      src: uidOf(last),
+      dst: uidOf(first),
+      ...(count === '' ? {} : { label: `×${count}` }),
+      style: 'dotted',
+      reason: 'loop',
+    });
+  }
+
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -357,9 +461,32 @@ export function parse(xml: string, opts: ParseOptions): Graph {
   const roots = topLevel(doc, rules);
   const { nodes, containers, warnings } = walkNodes(roots, rules);
 
+  // A graph with no nodes is a failure, not a result. Returning one produced
+  // an empty `flowchart TD` and an exit code of zero, which is the worst way
+  // to be wrong: nothing downstream can tell it from a file that genuinely
+  // has no steps, and CI passes.
+  if (nodes.size === 0) {
+    const seen = [...new Set(roots.flatMap((el) => stepChildren(el, rules).map(tagOf)))];
+    throw new ParseError(
+      `<${tagOf(doc.documentElement)}> produced no steps — every element under it ` +
+        'either lacks a uid or is listed in `ignore`' +
+        (seen.length === 0 ? '' : `. It holds ${seen.join(', ')}`),
+    );
+  }
+
   const first = roots[0];
   if (first === undefined) throw new ParseError('document contains no steps');
-  const rootUid = uidOf(first);
+
+  // The outermost *node*, which is not always `roots[0]`: a uid-less wrapper
+  // is transparent and contributes no node, so the root is the first thing the
+  // walk actually kept. `nodes` is filled in document order, so this is it.
+  let rootUid = '';
+  for (const node of nodes.values()) {
+    if (node.parent === null) {
+      rootUid = node.uid;
+      break;
+    }
+  }
 
   const entryEl = firstLeaf(first, rules);
   if (entryEl === null) {

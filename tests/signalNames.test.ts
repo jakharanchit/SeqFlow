@@ -3,8 +3,8 @@
  *
  * The behaviour that matters most here is the one with no file loaded: every
  * tag comes back exactly as the XML spells it. The text export proves the
- * names cannot be derived — `calc_bms_pack_temp_max` prints as "Pack Temp max"
- * and `power_supply_voltage_setpoint` as "Power Supply Voltage Request" — so
+ * names cannot be derived — `calc_mod_unit_temp_max` prints as "Unit Temp max"
+ * and `drive_source_reading_setpoint` as "Drive Source Reading Request" — so
  * anything this module invents would be wrong in a way nobody could see.
  */
 
@@ -25,10 +25,10 @@ const graph = parse(fixtureXml, { rules, domParser });
 
 describe('with no dictionary', () => {
   it('shows the tag verbatim and never a guess', () => {
-    expect(signalLabel('power_supply_voltage_setpoint')).toBe('power_supply_voltage_setpoint');
-    expect(signalLabel('calc_bms_pack_temp_max', undefined)).toBe('calc_bms_pack_temp_max');
-    expect(signalLabel('PackVoltage')).toBe('PackVoltage');
-    expect(enumLabel('electronic_load_operation_mode', '2')).toBe('2');
+    expect(signalLabel('drive_source_reading_setpoint')).toBe('drive_source_reading_setpoint');
+    expect(signalLabel('calc_mod_unit_temp_max', undefined)).toBe('calc_mod_unit_temp_max');
+    expect(signalLabel('UnitReading')).toBe('UnitReading');
+    expect(enumLabel('controlled_load_operation_mode', '2')).toBe('2');
   });
 
   it('is an empty dictionary, not a null one, so callers need no branch', () => {
@@ -41,33 +41,33 @@ describe('with no dictionary', () => {
 describe('parsing', () => {
   const file = `# the plant's names for these tags
 tag,display
-calc_bms_pack_temp_max,Pack Temp max
-power_supply_voltage_setpoint,Power Supply Voltage Request
-electronic_load_current_setpoint,Load Current Request
-electronic_load_operation_mode,Operation Mode
-electronic_load_operation_mode:2,"2: Constant Current"
+calc_mod_unit_temp_max,Unit Temp max
+drive_source_reading_setpoint,Drive Source Reading Request
+controlled_load_current_setpoint,Load Current Request
+controlled_load_operation_mode,Operation Mode
+controlled_load_operation_mode:2,"2: Constant Current"
 `;
 
   it('reads CSV, skipping the header and the comment', () => {
     const { names, size, skipped } = parseSignalNames(file);
     expect(size).toBe(5);
     expect(skipped).toBe(0);
-    expect(signalLabel('calc_bms_pack_temp_max', names)).toBe('Pack Temp max');
-    expect(signalLabel('power_supply_voltage_setpoint', names)).toBe(
-      'Power Supply Voltage Request',
+    expect(signalLabel('calc_mod_unit_temp_max', names)).toBe('Unit Temp max');
+    expect(signalLabel('drive_source_reading_setpoint', names)).toBe(
+      'Drive Source Reading Request',
     );
   });
 
   it('keys an enum member by tag and value', () => {
     const { names } = parseSignalNames(file);
-    expect(enumLabel('electronic_load_operation_mode', '2', names)).toBe('2: Constant Current');
+    expect(enumLabel('controlled_load_operation_mode', '2', names)).toBe('2: Constant Current');
     // A value the dictionary does not carry falls back to the value itself.
-    expect(enumLabel('electronic_load_operation_mode', '3', names)).toBe('3');
+    expect(enumLabel('controlled_load_operation_mode', '3', names)).toBe('3');
   });
 
   it('reads TSV, and a tab beats a comma inside a name', () => {
-    const { names } = parseSignalNames('calc_bms_pack_temp_max\tPack Temp, max\n');
-    expect(signalLabel('calc_bms_pack_temp_max', names)).toBe('Pack Temp, max');
+    const { names } = parseSignalNames('calc_mod_unit_temp_max\tPack Temp, max\n');
+    expect(signalLabel('calc_mod_unit_temp_max', names)).toBe('Pack Temp, max');
   });
 
   it('counts a row with no name, and a repeated key, rather than taking it', () => {
@@ -87,9 +87,9 @@ electronic_load_operation_mode:2,"2: Constant Current"
   });
 
   it('does not mistake a first data row for a header', () => {
-    const { names, size } = parseSignalNames('PackVoltage,Pack Voltage\n');
+    const { names, size } = parseSignalNames('UnitReading,Pack Voltage\n');
     expect(size).toBe(1);
-    expect(signalLabel('PackVoltage', names)).toBe('Pack Voltage');
+    expect(signalLabel('UnitReading', names)).toBe('Pack Voltage');
   });
 });
 
@@ -102,10 +102,10 @@ describe('against the fixture', () => {
   });
 
   it('a partial dictionary reads as partial', () => {
-    const { names } = parseSignalNames('PackVoltage,Pack Voltage\n');
+    const { names } = parseSignalNames('UnitReading,Pack Voltage\n');
     const left = unnamedTags(tags, names);
     expect(left).toHaveLength(9);
-    expect(left).not.toContain('PackVoltage');
-    expect(left).toContain('calc_bms_pack_temp_max');
+    expect(left).not.toContain('UnitReading');
+    expect(left).toContain('calc_mod_unit_temp_max');
   });
 });

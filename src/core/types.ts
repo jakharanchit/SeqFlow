@@ -20,7 +20,7 @@ export type EdgeStyle = 'solid' | 'dotted';
  * Why an edge exists. Also the sort key component that makes Mermaid output
  * deterministic — see CLAUDE.md invariant 6.
  */
-export type EdgeReason = 'fallthrough' | 'goto' | 'branch' | 'criteria';
+export type EdgeReason = 'fallthrough' | 'goto' | 'branch' | 'criteria' | 'loop';
 
 export interface SeqNode {
   /** GUID from the XML `uid` attribute, verbatim. Never derived. */
@@ -65,6 +65,13 @@ export interface SeqEdge {
 
 export type WarningCode =
   | 'UNKNOWN_ELEMENT'
+  /**
+   * An element the rule file calls a leaf that nonetheless holds uid-bearing
+   * children. It is walked as a container anyway — dropping the subtree would
+   * make steps vanish in silence, which invariant 7 forbids — but the rule
+   * file and the file disagree and a reader should know which one won.
+   */
+  | 'UNKNOWN_CONTAINER'
   | 'UNRESOLVED_TARGET'
   | 'EMPTY_CONTAINER'
   | 'NO_SUCCESSOR';
@@ -137,12 +144,29 @@ export interface Rules {
    * produces a figure 41x out on the sample. See spec 7.6.
    */
   durations: Durations;
+  /**
+   * Container elements that repeat. Keyed by element name; see `LoopRule`.
+   * Absent means no element loops and no back edge is ever drawn.
+   */
+  loops: Record<string, LoopRule>;
   convergenceThreshold: number;
 }
 
 export interface Durations {
   waits: string[];
   timeouts: string[];
+}
+
+/**
+ * A repeating container. The back edge runs from the container's last leaf to
+ * its first, carrying `reason: 'loop'` so that path arithmetic can exclude it
+ * (see `duration.ts`) while the diagram still draws it.
+ */
+export interface LoopRule {
+  /** Attribute holding the iteration count. Optional — an unlabelled loop. */
+  count?: string;
+  /** Attribute holding the period in seconds, for the timing report. */
+  period?: string;
 }
 
 /* ------------------------------------------------------------------ */

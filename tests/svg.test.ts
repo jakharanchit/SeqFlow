@@ -11,7 +11,7 @@ import ELK from 'elkjs/lib/elk.bundled.js';
 import { DOMParser as XmlParser } from '@xmldom/xmldom';
 
 import { parse } from '../src/core/parse';
-import { toFlow } from '../src/emit/flow';
+import { EDGE_COLOR, toFlow } from '../src/emit/flow';
 import { asGraph, visibleGraph } from '../src/emit/collapse';
 import { esc, toSvg, wrapText, DARK, LIGHT } from '../src/emit/svg';
 import {
@@ -116,7 +116,10 @@ describe('well-formedness', () => {
   });
 
   test('text is real text, not paths', () => {
-    expect(countTags(svg.text, 'path')).toBe(4); // the four arrowhead markers
+    // One arrowhead marker per edge reason, and nothing else drawn as a path:
+    // every glyph on the page is real <text>. Derived from EDGE_COLOR so that
+    // adding a reason does not read as a regression here.
+    expect(countTags(svg.text, 'path')).toBe(Object.keys(EDGE_COLOR).length);
     const doc = parseSvg(svg.text);
     const texts = doc.getElementsByTagName('text');
     // 107 steps (some wrapping to two lines) + 26 group titles + the caption.
@@ -173,7 +176,7 @@ describe('edges', () => {
   test('every route lands on its target, not in mid-air', () => {
     // ELK routes an edge in the coordinate system of its endpoints' lowest
     // common ancestor but reports it on the root, so reading the points as
-    // absolute puts a jump between two Pulses 314 px above where it belongs.
+    // absolute puts a jump between two Cycles 314 px above where it belongs.
     // Nothing catches that but this: it renders as an arrowhead in open space.
     const byId = new Map(grouped.nodes.map((n) => [n.id, n]));
     const absolute = (id: string): { x: number; y: number } => {
@@ -231,8 +234,8 @@ describe('edges', () => {
 
 describe('collapse and highlight', () => {
   test('a collapsed sequence exports as the single node it appears as', async () => {
-    const pulse = [...graph.nodes.values()].find((n) => n.name === 'Pulse 1 - 6C')!;
-    const view = visibleGraph(graph, new Set([pulse.uid]));
+    const cycle = [...graph.nodes.values()].find((n) => n.name === 'Cycle 1 - 4R')!;
+    const view = visibleGraph(graph, new Set([cycle.uid]));
     const folded = toFlow(asGraph(graph, view), rules, {
       collapsedCounts: view.collapsedCounts,
     });
@@ -241,9 +244,9 @@ describe('collapse and highlight', () => {
 
     expect(laid.nodes.length).toBe(133 - 28);
     // One dashed box, with its step count, and nothing from inside it.
-    expect(svg.text).toContain('>Pulse 1 - 6C<');
+    expect(svg.text).toContain('>Cycle 1 - 4R<');
     expect(svg.text).toContain('>28 steps<');
-    expect(svg.text).not.toContain('>Discharge at 6C<');
+    expect(svg.text).not.toContain('>Draw down at 4R<');
   });
 
   test('dim and highlight classes are honoured, and can be switched off', () => {
@@ -301,7 +304,7 @@ describe('text handling', () => {
     const texts = doc.getElementsByTagName('text');
     const found: string[] = [];
     for (let i = 0; i < texts.length; i++) found.push(texts.item(i)?.textContent ?? '');
-    expect(found.some((t) => t.includes('6C Pulse (10s)'))).toBe(true);
+    expect(found.some((t) => t.includes('4R Cycle (10s)'))).toBe(true);
   });
 
   test('markup in a name is escaped, not injected', () => {
@@ -317,7 +320,7 @@ describe('text handling', () => {
 
   test('wrapText fills lines and ellipsises the overflow', () => {
     expect(wrapText('Short', 200)).toEqual(['Short']);
-    const long = wrapText('Charge to Desired Voltage at a Constant Current Until Full', 150, 2);
+    const long = wrapText('Excite to Desired Reading at a Constant Current Until Full', 150, 2);
     expect(long.length).toBe(2);
     expect(long.join('')).toMatch(/…$/);
     // A single unbreakable word is still cut.

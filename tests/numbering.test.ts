@@ -55,17 +55,17 @@ describe('the fixture', () => {
   it('reads back by number', () => {
     const index = byStepNumber(graph);
     expect(index.size).toBe(132);
-    expect(graph.nodes.get(index.get('2.1.6.7')!)?.name).toBe('6C Pulse (10s)');
+    expect(graph.nodes.get(index.get('2.1.6.7')!)?.name).toBe('4R Cycle (10s)');
     expect(graph.nodes.get(index.get('3.3')!)?.element).toBe('StopLogging');
   });
 
   it('survives collapse, because collapse reuses the node objects', () => {
-    const pulses = [...graph.nodes.values()].filter((n) => n.name.startsWith('Pulse '));
-    const view = visibleGraph(graph, new Set(pulses.map((n) => n.uid)));
-    for (const p of pulses) {
+    const cycles = [...graph.nodes.values()].filter((n) => n.name.startsWith('Cycle '));
+    const view = visibleGraph(graph, new Set(cycles.map((n) => n.uid)));
+    for (const p of cycles) {
       expect(view.nodes.get(p.uid)?.stepNumber).toBe(p.stepNumber);
     }
-    expect(view.nodes.get(pulses[0]!.uid)?.stepNumber).toBe('2.1');
+    expect(view.nodes.get(cycles[0]!.uid)?.stepNumber).toBe('2.1');
   });
 
   it('is stable across two parses of the same bytes', () => {
@@ -78,12 +78,12 @@ describe('the fixture', () => {
 
 describe('numberedName', () => {
   it('uses the tool text export separator', () => {
-    const pulse = [...graph.nodes.values()].find((n) => n.stepNumber === '2.1.6.7')!;
-    expect(numberedName(pulse)).toBe('2.1.6.7 - 6C Pulse (10s)');
+    const cycle = [...graph.nodes.values()].find((n) => n.stepNumber === '2.1.6.7')!;
+    expect(numberedName(cycle)).toBe('2.1.6.7 - 4R Cycle (10s)');
   });
 
   it('falls back to the bare name rather than printing a stray dash', () => {
-    expect(numberedName(graph.nodes.get(graph.root)!)).toBe('HLB Battery ESR');
+    expect(numberedName(graph.nodes.get(graph.root)!)).toBe('XTR Module Test');
     expect(numberedName(node('X', null))).toBe('X');
   });
 });

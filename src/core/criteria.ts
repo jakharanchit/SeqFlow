@@ -52,7 +52,7 @@ export interface Criterion {
   id: string;
   /**
    * A name for the row. The step name where every use agrees on one, which is
-   * how the fixture reads — four uses of "Acceptance Criteria - Pack OCV".
+   * how the fixture reads — four uses of "Acceptance Criteria - Assembly".
    * Where they disagree, the id has to stand for itself.
    */
   name: string;

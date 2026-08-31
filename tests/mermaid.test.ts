@@ -74,17 +74,17 @@ describe('ids and labels', () => {
   test('the four bracketed names survive escaping', () => {
     const hostile = [...graph.nodes.values()].filter((n) => n.name.includes('('));
     expect(hostile.map((n) => n.name)).toEqual([
-      '6C Pulse (10s)',
-      '12C Pulse (10s)',
-      '24C Pulse (10s)',
-      '36C Pulse (10s)',
+      '4R Cycle (10s)',
+      '18R Cycle (10s)',
+      '32R Cycle (10s)',
+      '57R Cycle (10s)',
     ]);
     const text = toMermaid(graph, rules);
     // Labels carry the step number, so the name is quoted behind it.
     for (const node of hostile) {
       expect(text).toContain(`"${node.stepNumber} - ${node.name}"`);
     }
-    expect(text).toContain('"2.1.6.7 - 6C Pulse (10s)"');
+    expect(text).toContain('"2.1.6.7 - 4R Cycle (10s)"');
   });
 
   test('quotes and angle brackets become Mermaid entities, not backslashes', () => {
@@ -213,10 +213,10 @@ describe('depth modes — spec section 8', () => {
 
   test('a folded sequence is one node carrying its step count', () => {
     const text = toMermaid(graph, rules, { mode: { kind: 'depth', depth: 2 } });
-    const main = [...graph.nodes.values()].find((n) => n.name === 'Pulse 1 - 6C');
+    const main = [...graph.nodes.values()].find((n) => n.name === 'Cycle 1 - 4R');
     expect(main).toBeDefined();
     expect(main!.stepNumber).toBe('2.1');
-    expect(text).toContain(`${mermaidId(main!.uid)}[["2.1 - Pulse 1 - 6C<br/>28 steps"]]`);
+    expect(text).toContain(`${mermaidId(main!.uid)}[["2.1 - Cycle 1 - 4R<br/>28 steps"]]`);
     // ...not as an empty subgraph.
     expect(text).not.toContain(`subgraph ${mermaidId(main!.uid)}`);
   });
@@ -305,8 +305,8 @@ describe('split — one file per top-level sequence plus a linked overview', () 
   });
 
   test('slug is filename-safe', () => {
-    expect(slug('Pulse 1 - 6C')).toBe('pulse-1-6c');
-    expect(slug('6C Pulse (10s)')).toBe('6c-pulse-10s');
+    expect(slug('Cycle 1 - 4R')).toBe('cycle-1-4r');
+    expect(slug('4R Cycle (10s)')).toBe('4r-cycle-10s');
     expect(slug('!!!')).toBe('sequence');
   });
 });

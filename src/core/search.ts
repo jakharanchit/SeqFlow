@@ -26,7 +26,7 @@ export interface SearchResult {
   stepNumber: string;
   element: string;
   kind: NodeKind;
-  /** Ancestor names, outermost first: `HLB Battery ESR › Main › Pulse 1 - 6C`. */
+  /** Ancestor names, outermost first: `XTR Module Test › Main › Cycle 1 - 4R`. */
   path: string;
   /** Ancestor uids, for revealing a hit inside a collapsed sequence. */
   ancestors: string[];

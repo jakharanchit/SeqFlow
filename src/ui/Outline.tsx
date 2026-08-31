@@ -14,7 +14,7 @@
  * to 21.
  */
 
-import { useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { displayName, numberedName } from '../core/ancestry';
 import { StepNum } from './StepNum';
@@ -106,6 +106,29 @@ function Marked({ name, at, length }: { name: string; at: number; length: number
   );
 }
 
+/**
+ * Row height in pixels. **Must match `.outline .row { height }` in styles.css** —
+ * the windowing below places rows by arithmetic, not by measuring them, and a
+ * disagreement shows up as rows drifting out of the scroll position.
+ */
+const ROW_HEIGHT = 22;
+
+/**
+ * Rows to render beyond the visible slice, above and below. Enough that a fast
+ * scroll does not reach the edge before the next render lands.
+ */
+const OVERSCAN = 12;
+
+/**
+ * Below this, every row is rendered and the window is not used at all.
+ *
+ * A 133-row outline has never been the problem; a corpus has sequences several
+ * times that, and 5 733 rows is 5 733 DOM subtrees that re-render on every
+ * selection. Keeping the small case unwindowed means the common path has no
+ * spacers in it and nothing to get wrong.
+ */
+const WINDOW_ABOVE = 200;
+
 export function Outline({
   graph,
   selected,
@@ -136,6 +159,67 @@ export function Outline({
     for (const uid of graph.containers.keys()) out.set(uid, subtreeSize(graph, uid));
     return out;
   }, [graph]);
+
+  /* ---------------------------------------------------------------- */
+  /* Windowing                                                         */
+  /* ---------------------------------------------------------------- */
+
+  const scroller = useRef<HTMLDivElement | null>(null);
+  const observer = useRef<ResizeObserver | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewport, setViewport] = useState(0);
+
+  /**
+   * A callback ref, not an effect.
+   *
+   * The rows container is not mounted with the component — there is no file
+   * yet, and the search results replace it when the box has a query — so an
+   * effect that looks for it once on mount finds nothing, never runs again,
+   * and leaves the viewport height at zero. Windowing is off while that is
+   * zero, so the failure is silent: every row renders and the whole feature
+   * quietly does not exist. A callback ref fires on each mount and unmount.
+   */
+  const attach = useCallback((el: HTMLDivElement | null): void => {
+    observer.current?.disconnect();
+    scroller.current = el;
+    if (el === null) {
+      observer.current = null;
+      return;
+    }
+    setViewport(el.clientHeight);
+    setScrollTop(el.scrollTop);
+    observer.current = new ResizeObserver(() => setViewport(el.clientHeight));
+    observer.current.observe(el);
+  }, []);
+
+  const windowed = rows.length > WINDOW_ABOVE && viewport > 0;
+  const first = windowed
+    ? Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
+    : 0;
+  const last = windowed
+    ? Math.min(rows.length, Math.ceil((scrollTop + viewport) / ROW_HEIGHT) + OVERSCAN)
+    : rows.length;
+  const slice = windowed ? rows.slice(first, last) : rows;
+
+  /*
+   * Bring the selected row into view.
+   *
+   * Without windowing an off-screen selection was merely out of sight; with it
+   * the row is not in the DOM at all, so a canvas or search selection could
+   * leave the outline showing nothing related. Scrolls only when the row is
+   * outside the viewport, so clicking down the list does not fight the reader.
+   */
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el === null || selected === null) return;
+    const index = rows.findIndex((r) => r.node.uid === selected);
+    if (index < 0) return;
+    const top = index * ROW_HEIGHT;
+    if (top < el.scrollTop) el.scrollTop = top;
+    else if (top + ROW_HEIGHT > el.scrollTop + el.clientHeight) {
+      el.scrollTop = top + ROW_HEIGHT - el.clientHeight;
+    }
+  }, [selected, rows]);
 
   if (graph === null) {
     return (
@@ -257,8 +341,17 @@ export function Outline({
           </div>
         </>
       ) : (
-        <div className="outline-rows">
-          {rows.map(({ node, level, isContainer, childCount }) => {
+        <div
+          className="outline-rows"
+          ref={attach}
+          onScroll={(e) => {
+            if (windowed) setScrollTop(e.currentTarget.scrollTop);
+          }}
+        >
+          {/* Spacers stand in for the rows above and below the window, so the
+              scrollbar reflects the whole tree rather than the rendered slice. */}
+          {first > 0 && <div style={{ height: first * ROW_HEIGHT }} />}
+          {slice.map(({ node, level, isContainer, childCount }) => {
             const isCollapsed = collapsed.has(node.uid);
             return (
               <div
@@ -316,6 +409,7 @@ export function Outline({
               </div>
             );
           })}
+          {last < rows.length && <div style={{ height: (rows.length - last) * ROW_HEIGHT }} />}
         </div>
       )}
     </aside>

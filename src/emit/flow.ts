@@ -38,7 +38,7 @@ export interface FlowNodeData extends Record<string, unknown> {
    * a picture of the canvas can be cross-referenced against a test report.
    */
   stepNumber: string;
-  /** Rule-file selected attributes, e.g. "power_supply_enable_output = TRUE". */
+  /** Rule-file selected attributes, e.g. "drive_source_enable_output = TRUE". */
   params: string;
   element: string;
   kind: NodeKind;
@@ -98,6 +98,10 @@ export const EDGE_COLOR: Record<string, string> = {
   criteria: '#d4544a',
   branch: '#3b82c4',
   goto: '#9a6bd0',
+  // A loop back edge runs against the flow, up the page past everything it
+  // repeats. Warm and distinctly not one of the forward colours, so it reads
+  // as "again" rather than as one more branch.
+  loop: '#c9821f',
 };
 
 function measure(label: string, params: string, stepNumber: string): number {

@@ -46,7 +46,7 @@ export function displayName(node: SeqNode): string {
 }
 
 /**
- * `2.1.6.7 - 6C Pulse (10s)` — the name with its step number, in the notation
+ * `2.1.6.7 - 4R Cycle (10s)` — the name with its step number, in the notation
  * the authoring tool's own text export uses, separator included.
  *
  * The number is what makes a step addressable: 27 names cover 106 of the 133

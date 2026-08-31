@@ -19,7 +19,7 @@ describe('search by step number', () => {
     expect(isStepNumberQuery('2.3.6')).toBe(true);
     expect(isStepNumberQuery('2')).toBe(true);
     expect(isStepNumberQuery('2.3.')).toBe(true); // mid-type, walking down
-    expect(isStepNumberQuery('2.3 - Pulse')).toBe(false);
+    expect(isStepNumberQuery('2.3 - Cycle')).toBe(false);
     expect(isStepNumberQuery('Turn off Load')).toBe(false);
     expect(isStepNumberQuery('')).toBe(false);
   });
@@ -27,16 +27,16 @@ describe('search by step number', () => {
   it('an exact number finds exactly one step', () => {
     const hits = search(graph, { text: '2.3.6.8' });
     expect(hits).toHaveLength(1);
-    expect(hits[0]?.name).toBe('Acceptance Criteria - ESR Max - 6C');
+    expect(hits[0]?.name).toBe('Acceptance Criteria - Top Val - 4R');
     // The whole point: that name is on four steps and the number is on one.
-    expect(search(graph, { text: 'Acceptance Criteria - ESR Max - 6C' })).toHaveLength(4);
+    expect(search(graph, { text: 'Acceptance Criteria - Top Val - 4R' })).toHaveLength(4);
   });
 
   it('a prefix selects the block beneath it', () => {
     const hits = search(graph, { text: '2.3.6' });
-    // The Discharge at 24C sequence plus its eleven steps.
+    // The Draw down at 32R sequence plus its eleven steps.
     expect(hits).toHaveLength(12);
-    expect(hits[0]?.name).toBe('Discharge at 24C');
+    expect(hits[0]?.name).toBe('Draw down at 32R');
     expect(hits.every((h) => h.stepNumber.startsWith('2.3.6'))).toBe(true);
   });
 
@@ -77,22 +77,22 @@ describe('search', () => {
     expect(covered.length).toBe(27);
     expect(covered.reduce((a, v) => a + v.length, 0)).toBe(106);
     expect(names.get('Turn off Load')).toHaveLength(5);
-    expect(names.get('Charge to Desired Voltage')).toHaveLength(4);
+    expect(names.get('Excite to Desired Reading')).toHaveLength(4);
   });
 
   it('returns 4 results with 4 distinct parent paths', () => {
-    const hits = search(graph, { text: 'Charge to Desired Voltage' });
+    const hits = search(graph, { text: 'Excite to Desired Reading' });
     expect(hits).toHaveLength(4);
     expect(new Set(hits.map((h) => h.path)).size).toBe(4);
     for (const hit of hits) {
-      expect(hit.path).toMatch(/Pulse \d/);
+      expect(hit.path).toMatch(/Cycle \d/);
       expect(hit.path).toBe(pathLabel(graph, hit.uid));
     }
   });
 
   it('is case-insensitive and matches on a substring', () => {
-    expect(search(graph, { text: 'CHARGE TO DESIRED' })).toHaveLength(4);
-    expect(search(graph, { text: 'desired volt' })).toHaveLength(4);
+    expect(search(graph, { text: 'EXCITE TO DESIRED' })).toHaveLength(4);
+    expect(search(graph, { text: 'desired read' })).toHaveLength(4);
   });
 
   it('filters to exactly 16 TestCriteriaEvaluation nodes', () => {
@@ -126,7 +126,7 @@ describe('search', () => {
   });
 
   it('carries the ancestor uids needed to reveal a hit', () => {
-    const hit = search(graph, { text: 'Charge Until Cutoff' })[0]!;
+    const hit = search(graph, { text: 'Excite Until Cutoff' })[0]!;
     expect(hit.ancestors.length).toBeGreaterThan(0);
     for (const uid of hit.ancestors) {
       expect(graph.nodes.get(uid)?.kind).toBe('container');

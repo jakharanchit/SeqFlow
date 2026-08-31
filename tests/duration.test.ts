@@ -56,7 +56,9 @@ describe('the fixture, measured', () => {
   });
 
   it('says which rule-file attributes produced the numbers', () => {
-    expect(report.waitAttrs).toEqual(['time']);
+    // `durationSec` is listed too, for a dialect this fixture does not use.
+    // The numbers below are unchanged because no element here carries it.
+    expect(report.waitAttrs).toContain('time');
     expect(report.timeoutAttrs).toEqual(['timeoutSeconds']);
   });
 });
@@ -132,11 +134,11 @@ describe('where a step sits', () => {
     expect(at.remaining).toEqual({ min: 0, max: 0 });
   });
 
-  it('grows through the four pulses', () => {
-    const pulses = [...graph.nodes.values()]
-      .filter((n) => n.kind === 'container' && n.name.startsWith('Pulse '))
+  it('grows through the four cycles', () => {
+    const cycles = [...graph.nodes.values()]
+      .filter((n) => n.kind === 'container' && n.name.startsWith('Cycle '))
       .map((n) => graph.containers.get(n.uid)![0]!);
-    const maxima = pulses.map((uid) => offset.get(uid)!.nominal.max);
+    const maxima = cycles.map((uid) => offset.get(uid)!.nominal.max);
     expect(maxima).toEqual([0, 30, 60, 90]);
   });
 

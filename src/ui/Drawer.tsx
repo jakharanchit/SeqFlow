@@ -1,16 +1,31 @@
 /**
- * Bottom drawer — spec 7.1. Eight tabs.
+ * Bottom drawer — spec 7.1. Nine tabs in three clusters.
  *
  * Everything here is a question about the whole file rather than about the
  * selected node, which is why it sits under the canvas rather than in the
- * inspector. Signals, criteria, repeats and the diff are cross-cutting tables;
- * timing is a whole-file number; export is a view of the whole graph.
+ * inspector. That was the only rule for a while, and it does not tell a reader
+ * where to look. The clusters do, and a new tab goes in whichever one answers
+ * its question:
+ *
+ *   contents  Signals · Criteria · Repeats    what is in this file
+ *   health    Warnings · Findings · Schema    what is wrong with it
+ *   analysis  Timing · Diff                   what it will do, and what changed
+ *
+ * Export is pinned right, away from all three: it is not a question about the
+ * file, it is a way out of the tool.
  *
  * **Findings and warnings are two tabs and stay two tabs.** A warning means the
  * parser could not make sense of something. A finding means it parsed fine and
  * still looks wrong. The fixture has 52 findings and zero warnings, and a
  * single list would make that file look broken while burying the four warnings
  * that would matter on a file that had them.
+ *
+ * **Schema is the warnings list transposed.** Warnings report the parser's
+ * difficulties one element at a time in document order, which is right for a
+ * file the rule file already covers. Schema reports them one *element name* at
+ * a time, commonest first, with the YAML to close the gap — which is what an
+ * unfamiliar dialect actually needs. The first one here produced fourteen
+ * warnings saying four things.
  *
  * The warnings list used to live in a dismissible banner. A list you can
  * dismiss is a list nobody reads twice, and NFR-6 wants unknown elements
@@ -27,6 +42,7 @@ import { signalLabel, unnamedTags, type SignalNameFile } from '../core/signalNam
 import type { SignalIndex, SignalRow } from '../core/signals';
 import { nodesFor } from '../core/signals';
 import type { Comparison, SimilarGroup } from '../core/similarity';
+import type { SchemaProfile } from '../core/profile';
 import type { Graph, Rules, Warning } from '../core/types';
 import type { FlowEdge, FlowNode } from '../emit/flow';
 import type { Point } from '../layout/elkGraph';
@@ -34,6 +50,7 @@ import { Criteria } from './Criteria';
 import { Diff } from './Diff';
 import { Export } from './Export';
 import { Findings } from './Findings';
+import { Schema } from './Schema';
 import { Timing } from './Timing';
 
 export type DrawerTab =
@@ -43,6 +60,7 @@ export type DrawerTab =
   | 'repeats'
   | 'findings'
   | 'warnings'
+  | 'schema'
   | 'diff'
   | 'export';
 
@@ -71,6 +89,13 @@ export interface DrawerProps {
   index: SignalIndex;
   rows: SignalRow[];
   warnings: Warning[];
+  /** Every element name in the file, against what the rule file knows. */
+  profile: SchemaProfile;
+  /** Gaps the rule file has no answer for — the Schema tab's badge. */
+  schemaGaps: number;
+  /** The rule file in force, and where it came from. Null means the built-in. */
+  rulesFile: string | null;
+  onClearRules: () => void;
   /** Structurally identical sibling sequences, biggest repeat first. */
   repeats: SimilarGroup[];
   /** The chosen repeat, compared. Null when there is nothing to compare. */
@@ -111,7 +136,13 @@ export interface DrawerProps {
 }
 
 /** Tabs that need more room than a signal list. */
-const TALL: ReadonlySet<DrawerTab> = new Set<DrawerTab>(['export', 'timing', 'findings', 'diff']);
+const TALL: ReadonlySet<DrawerTab> = new Set<DrawerTab>([
+  'export',
+  'timing',
+  'findings',
+  'diff',
+  'schema',
+]);
 
 interface TabProps {
   id: DrawerTab;
@@ -180,6 +211,10 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
     index,
     rows,
     warnings,
+    profile,
+    schemaGaps,
+    rulesFile,
+    onClearRules,
     repeats,
     comparison,
     repeat,
@@ -230,6 +265,10 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
   return (
     <div className={`drawer${open ? ' open' : ''}${open && TALL.has(tab) ? ' tall' : ''}`}>
       <div className="drawer-tabs">
+        {/* Contents — what is in this file. */}
+        <span className="tab-group" aria-hidden="true">
+          contents
+        </span>
         <Tab {...shared} id="signals" label="Signals" count={rows.length} />
         <Tab
           {...shared}
@@ -238,8 +277,25 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
           count={criteria.length}
           title="What can reject this unit"
         />
-        <Tab {...shared} id="timing" label="Timing" title="How long this sequence takes — a range" />
         <Tab {...shared} id="repeats" label="Repeats" count={repeats.length} />
+
+        {/*
+          Health — what is wrong with it, ordered by distance from "broken":
+          the parser could not read it, then it read fine and looks wrong, then
+          the rule file has not caught up. That ordering is the reason these are
+          three tabs rather than one list, so it is worth being visible.
+        */}
+        <span className="tab-group" aria-hidden="true">
+          health
+        </span>
+        <Tab
+          {...shared}
+          id="warnings"
+          label="Warnings"
+          count={warnings.length}
+          className={warnings.length > 0 ? 'has-warnings' : ''}
+          title="Things the parser could not make sense of"
+        />
         <Tab
           {...shared}
           id="findings"
@@ -250,12 +306,18 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
         />
         <Tab
           {...shared}
-          id="warnings"
-          label="Warnings"
-          count={warnings.length}
-          className={warnings.length > 0 ? 'has-warnings' : ''}
-          title="Things the parser could not make sense of"
+          id="schema"
+          label="Schema"
+          {...(schemaGaps === 0 ? {} : { count: schemaGaps })}
+          className={schemaGaps > 0 ? 'has-warnings' : ''}
+          title="Every element in the file, against what the rule file knows"
         />
+
+        {/* Analysis — what it will do, and what changed. */}
+        <span className="tab-group" aria-hidden="true">
+          analysis
+        </span>
+        <Tab {...shared} id="timing" label="Timing" title="How long this sequence takes — a range" />
         <Tab
           {...shared}
           id="diff"
@@ -294,8 +356,8 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
                     <span className="hint">
                       Tags as the XML spells them. Drop a two-column
                       <code> tag,name </code> .csv to show the plant&rsquo;s names — none is
-                      guessed, because <code>power_supply_voltage_setpoint</code> is called
-                      &ldquo;Power Supply Voltage Request&rdquo; and nothing in the file says so.
+                      guessed, because a tag ending <code>_setpoint</code> is routinely called
+                      something ending &ldquo;Request&rdquo;, and nothing in the file says so.
                     </span>
                   ) : (
                     <span className="hint">
@@ -482,6 +544,30 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
                   </table>
                 )}
               </div>
+            </>
+          ) : tab === 'schema' ? (
+            <>
+              <div className="drawer-list">
+                <div className="signal-names-note">
+                  {rulesFile === null ? (
+                    <span className="hint">
+                      Using the built-in <code>rules.yaml</code>. Drop a rule file on the page to
+                      use another one — the sequence is re-parsed in place and nothing is
+                      rebuilt.
+                    </span>
+                  ) : (
+                    <>
+                      <span className="hint">
+                        Rules from <b>{rulesFile}</b>.
+                      </span>
+                      <button type="button" onClick={onClearRules}>
+                        Use the built-in rules
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+              <Schema profile={profile} rules={rules} fileName={fileName} />
             </>
           ) : tab === 'export' ? (
             <Export

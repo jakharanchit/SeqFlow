@@ -22,3 +22,8 @@ Thumbs.db
 coverage/
 *.tsbuildinfo
 npm-debug.log*
+# Corpus input for `--audit`, which takes a directory at runtime and stores
+# nothing. These are real sequences and must never enter the repo; the two
+# hand-checked fixtures under fixtures/ are anonymised and are the only
+# sequence files that are tracked.
+test_xmls/

@@ -81,22 +81,22 @@ describe('ELK layout', () => {
     expect(entry.y).toBeLessThan(absolute(terminal.uid).y);
   });
 
-  it('does not stack the four Pulse blocks into one column', () => {
-    const pulses = [...graph.nodes.values()]
-      .filter((n) => n.kind === 'container' && n.name.startsWith('Pulse '))
+  it('does not stack the four Cycle blocks into one column', () => {
+    const cycles = [...graph.nodes.values()]
+      .filter((n) => n.kind === 'container' && n.name.startsWith('Cycle '))
       .map((n) => ({ name: n.name, ...absolute(n.uid), box: byId.get(n.uid)! }));
 
-    expect(pulses).toHaveLength(4);
-    // Each Pulse is a real block, not a degenerate strip.
-    for (const p of pulses) {
+    expect(cycles).toHaveLength(4);
+    // Each Cycle is a real block, not a degenerate strip.
+    for (const p of cycles) {
       expect(p.box.width).toBeGreaterThan(200);
       expect(p.box.height).toBeGreaterThan(200);
     }
     // And they are laid out as distinct blocks, not overlapping.
-    for (let i = 0; i < pulses.length; i++) {
-      for (let j = i + 1; j < pulses.length; j++) {
-        const a = pulses[i]!;
-        const b = pulses[j]!;
+    for (let i = 0; i < cycles.length; i++) {
+      for (let j = i + 1; j < cycles.length; j++) {
+        const a = cycles[i]!;
+        const b = cycles[j]!;
         const overlaps =
           a.x < b.x + b.box.width &&
           b.x < a.x + a.box.width &&
@@ -128,7 +128,7 @@ describe('ELK layout', () => {
 
 describe('compact layout mode', () => {
   it('wraps the chain into a readable aspect ratio', async () => {
-    // Task 7 asks that the Pulse blocks not read as one long chain. They are
+    // Task 7 asks that the Cycle blocks not read as one long chain. They are
     // genuinely sequential, so `grouped` stacks them; `compact` wraps the same
     // chain into columns without changing a single edge.
     const flat = nodesForMode(flow.nodes, 'compact');

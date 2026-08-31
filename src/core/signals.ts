@@ -2,12 +2,12 @@
  * Signal cross-reference index — spec 7.4.
  *
  * Every tag named in `signal_attrs` mapped to the steps that touch it.
- * `power_supply_enable_output` is switched in eight places across four pulses;
+ * `drive_source_enable_output` is switched in eight places across four cycles;
  * finding them by reading XML is slow, which is the whole point of the index.
  *
  * The catch is `ConditionStep`. It holds no `sensorTag` of its own — the
  * condition lives on its `Comparison` child, lifted into `childAttrs` by the
- * parser. An index that reads only `attrs` finds zero uses of `PackVoltage`
+ * parser. An index that reads only `attrs` finds zero uses of `UnitReading`
  * in a file that compares against it four times.
  *
  * Which attributes count is rule-file knowledge, never source knowledge: this

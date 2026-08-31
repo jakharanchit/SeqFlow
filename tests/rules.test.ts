@@ -6,7 +6,10 @@ import { read, rules } from './helpers';
 describe('rule file loader', () => {
   it('loads the shipped rules.yaml', () => {
     expect(rules.version).toBe(1);
-    expect(rules.containers).toEqual(['TestSequence', 'Sequence']);
+    // The rule file covers two dialects now, so this asserts what must be
+    // there rather than the whole list — a third dialect should not break a
+    // test about the loader.
+    expect(rules.containers).toEqual(expect.arrayContaining(['TestSequence', 'Sequence']));
     expect(rules.edges).toHaveLength(5);
     expect(rules.convergenceThreshold).toBe(3);
   });

@@ -29,7 +29,7 @@ import type { Graph } from './types';
  * anything a malformed file has orphaned.
  *
  * A single parentless node is the document title, not step 1 — the sample's
- * outer `Sequence` "HLB Battery ESR" is unnumbered and its children are 1, 2,
+ * outer `Sequence` "XTR Module Test" is unnumbered and its children are 1, 2,
  * 3. Where a file has several roots there is no title to speak of, so they are
  * numbered 1..n instead.
  *

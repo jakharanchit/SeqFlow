@@ -47,12 +47,12 @@ describe('tree walk', () => {
 
   it('lifts a ConditionStep Comparison into childAttrs', () => {
     const cond = [...graph.nodes.values()].find(
-      (n) => n.element === 'ConditionStep' && n.name === 'Check Start Voltage',
+      (n) => n.element === 'ConditionStep' && n.name === 'Check Start Reading',
     );
     const comparison = cond?.childAttrs?.['Comparison']?.[0];
-    expect(comparison?.['sensorTag']).toBe('PackVoltage');
+    expect(comparison?.['sensorTag']).toBe('UnitReading');
     expect(comparison?.['comparison']).toBe('GTOET');
-    expect(comparison?.['value']).toBe('53.2');
+    expect(comparison?.['value']).toBe('24.7');
   });
 
   it('does not make a node of a Comparison, DynamicName or Text', () => {
@@ -209,7 +209,7 @@ describe('edges', () => {
   });
 
   it('starts at the first leaf of the root sequence', () => {
-    expect(graph.nodes.get(graph.root)?.name).toBe('HLB Battery ESR');
+    expect(graph.nodes.get(graph.root)?.name).toBe('XTR Module Test');
     expect(graph.nodes.get(graph.entry)?.name).toBe('Set Status');
     expect(graph.nodes.get(graph.entry)?.kind).not.toBe('container');
   });

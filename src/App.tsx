@@ -14,8 +14,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import rulesText from '../rules.yaml?raw';
 import { ParseError, indexElements, parse } from './core/parse';
-import { loadRules } from './core/rules';
-import type { Graph, Warning } from './core/types';
+import { profile, unknowns, type SchemaProfile } from './core/profile';
+import { RuleFileError, loadRules } from './core/rules';
+import type { Graph, Rules, SeqEdge, Warning } from './core/types';
 import { ancestorUids } from './core/ancestry';
 import {
   criteriaAhead,
@@ -32,7 +33,7 @@ import {
   type Offset,
 } from './core/duration';
 import { lint } from './core/lint';
-import { adjacency, pathSet } from './core/paths';
+import { adjacency, firstLeafOf, pathSet } from './core/paths';
 import { elementCounts, isActive, matchSet, search } from './core/search';
 import {
   noSignalNames,
@@ -41,7 +42,7 @@ import {
 } from './core/signalNames';
 import { nodesFor, signalIndex, signalRows } from './core/signals';
 import { compare, similarGroups } from './core/similarity';
-import { asGraph, visibleGraph } from './emit/collapse';
+import { asGraph, autoCollapse, visibleGraph } from './emit/collapse';
 import {
   SidecarError,
   applySidecar,
@@ -49,7 +50,7 @@ import {
   type Sidecar,
 } from './emit/sidecar';
 import { toFlow, type FlowEdge, type FlowNode } from './emit/flow';
-import { layout } from './layout/elk';
+import { LayoutTimeout, layout, type LayoutResult } from './layout/elk';
 import type { LayoutMode, Point } from './layout/elkGraph';
 import { Canvas, type FocusRequest } from './ui/Canvas';
 import { Drawer, type DrawerTab } from './ui/Drawer';
@@ -57,16 +58,27 @@ import { Inspector } from './ui/Inspector';
 import { Outline } from './ui/Outline';
 import './ui/styles.css';
 
-const rules = loadRules(rulesText);
+/**
+ * The rule file the build shipped with. It is the default, not the only one:
+ * a schema this file has never seen arrives as a dropped `.yaml`, and the
+ * whole point is that a new dialect does not need a rebuild to be read.
+ */
+const BUILT_IN_RULES = loadRules(rulesText);
 
 interface Loaded {
   graph: Graph;
   fileName: string;
   snippets: Map<string, string>;
+  /**
+   * Every element name in the document against what the rule file knows.
+   * Computed from the XML rather than the graph, because the elements worth
+   * reporting are exactly the ones the graph does not contain.
+   */
+  profile: SchemaProfile;
 }
 
 /** Raw XML per node, for the inspector. Serialising is a UI concern. */
-function snippetsFor(xml: string, graph: Graph): Map<string, string> {
+function snippetsFor(xml: string, graph: Graph, rules: Rules): Map<string, string> {
   const out = new Map<string, string>();
   try {
     const doc = new DOMParser().parseFromString(xml, 'application/xml');
@@ -82,6 +94,23 @@ function snippetsFor(xml: string, graph: Graph): Map<string, string> {
 }
 
 const NO_COLLAPSE: ReadonlySet<string> = new Set();
+
+/**
+ * Visible nodes a first layout is allowed to hand ELK.
+ *
+ * Measured over generated graphs: 581 nodes lay out in 1.2 s, 2 295 in 2.9 s,
+ * 5 733 in 10.7 s. Everything else in the pipeline together is under 200 ms at
+ * the largest size, so the budget is entirely about ELK. 600 keeps the first
+ * paint near a second; a file under it is not folded at all, which is every
+ * file this tool was built on.
+ */
+const LAYOUT_BUDGET = 600;
+
+/** Distinct arrangements kept per file. A fold and its undo are two. */
+const LAYOUT_CACHE_LIMIT = 12;
+
+/** So the drawer's profile prop never goes optional before a file lands. */
+const EMPTY_PROFILE: SchemaProfile = new Map();
 
 /** Placeholders so the drawer's props never go optional before a file lands. */
 const EMPTY_COUNTS = {
@@ -106,11 +135,27 @@ const EMPTY_DURATION: DurationReport = {
   nominal: { min: 0, max: 0 },
   worst: { min: 0, max: 0 },
   ratio: Infinity,
+  loops: [],
 };
 
 export function App(): React.JSX.Element {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  /**
+   * The rule file in force. `file` is null while the built-in one is in use.
+   * Held together so a re-parse can never read a new rule set and an old
+   * name, which is the sort of mismatch a reader has no way to notice.
+   */
+  const [ruleSet, setRuleSet] = useState<{ rules: Rules; file: string | null }>({
+    rules: BUILT_IN_RULES,
+    file: null,
+  });
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(NO_COLLAPSE);
+  /**
+   * How many sequences the *tool* folded on load, as opposed to the reader.
+   * Shown once in the toolbar: a file that opens folded has to say so, or it
+   * reads as a file with fewer steps than it has.
+   */
+  const [autoFolded, setAutoFolded] = useState(0);
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [edges, setEdges] = useState<FlowEdge[]>([]);
   /**
@@ -170,6 +215,25 @@ export function App(): React.JSX.Element {
   const focusSeq = useRef(0);
   /** Read by `loadLayout`, which must not be rebuilt every time the graph is. */
   const graphRef = useRef<Graph | null>(null);
+  /**
+   * The last sequence XML as text, so a newly dropped rule file can re-parse
+   * it. Kept in a ref rather than state: nothing renders from it, and it must
+   * not put `load` back in the dependency list of the page-wide drop handler.
+   */
+  const sourceRef = useRef<{ xml: string; fileName: string } | null>(null);
+  /**
+   * The last layout mode that actually finished. A mode that times out is
+   * reverted to this one, so the toolbar never claims a view the canvas is not
+   * showing.
+   */
+  const goodMode = useRef<LayoutMode>('grouped');
+  /**
+   * The rule set, readable from `load` without putting it in the dependency
+   * list. `load` is the page-wide drop handler's only dependency and rebuilding
+   * it on every rule change would re-register the listener for no reason.
+   */
+  const ruleSetRef = useRef(ruleSet);
+  ruleSetRef.current = ruleSet;
 
   /**
    * The file as parsed: what every analysis panel is about. When a baseline is
@@ -177,6 +241,12 @@ export function App(): React.JSX.Element {
    * not to the linter.
    */
   const subject = loaded?.graph ?? null;
+
+  /** Elements the rule file has no answer for — the Schema tab's badge. */
+  const schemaGaps = useMemo(
+    () => (loaded === null ? 0 : unknowns(loaded.profile).length),
+    [loaded],
+  );
 
   const diff = useMemo(
     () => (subject === null || baseline === null ? null : diffGraphs(baseline.graph, subject)),
@@ -204,7 +274,23 @@ export function App(): React.JSX.Element {
     [graph, collapsed],
   );
 
-  const query = useMemo(() => ({ text, elements }), [text, elements]);
+  /**
+   * The typed text, one beat behind.
+   *
+   * The box itself stays instant — it renders from `text` — but a keystroke
+   * otherwise re-searches the whole graph *and* re-dims every node on the
+   * canvas, and doing that per character is how a search box feels heavy on a
+   * file with thousands of steps. The type filter is not debounced: it is a
+   * click, and a click should land at once.
+   */
+  const [settled, setSettled] = useState('');
+  useEffect(() => {
+    if (settled === text) return;
+    const id = window.setTimeout(() => setSettled(text), 120);
+    return () => window.clearTimeout(id);
+  }, [text, settled]);
+
+  const query = useMemo(() => ({ text: settled, elements }), [settled, elements]);
   const searching = isActive(query);
   const results = useMemo(
     () => (graph === null || !searching ? [] : search(graph, query)),
@@ -212,12 +298,55 @@ export function App(): React.JSX.Element {
   );
   const available = useMemo(() => (graph === null ? [] : elementCounts(graph)), [graph]);
 
+  /**
+   * False until the canvas has painted once for this file.
+   *
+   * The nine whole-file analyses below cost about 180 ms together on a
+   * 5 733-node graph — small beside ELK, and still 180 ms of blocked paint that
+   * buys nothing, because eight of them feed drawer tabs nobody has opened yet.
+   *
+   * Deferring them *until their tab opens* would empty the tab badges, which
+   * are the useful part of having them. Running them one frame late keeps every
+   * badge and unblocks the first frame, and a reader cannot reach the drawer in
+   * a frame.
+   */
+  const [analysed, setAnalysed] = useState(false);
+  useEffect(() => {
+    if (subject === null) {
+      setAnalysed(false);
+      return;
+    }
+    setAnalysed(false);
+    // A timer, not requestAnimationFrame. Frames do not run in a hidden or
+    // throttled tab, and an analysis gate that never opens there would leave
+    // every drawer tab permanently empty with nothing to say why.
+    const id = window.setTimeout(() => setAnalysed(true), 0);
+    return () => window.clearTimeout(id);
+  }, [subject]);
+
+  /** The subject once the first paint is done — null before it. */
+  const ready = analysed ? subject : null;
+
+  /**
+   * One edge index per graph, shared by every query that takes one. Each call
+   * site used to default-build its own, which meant two full rebuilds on every
+   * click — cheap at 126 edges and not at all cheap on a file ten times that.
+   */
+  const subjectAdj = useMemo(
+    () => (subject === null ? null : adjacency(subject)),
+    [subject],
+  );
+  const graphAdj = useMemo(() => (graph === null ? null : adjacency(graph)), [graph]);
+
   /* Every analysis below is about the parsed file, so it reads `subject`. A
      ghost is a step this revision does not have; counting its signals, timing
-     it, or linting it would be reporting on a file that is not the subject. */
+     it, or linting it would be reporting on a file that is not the subject.
+
+     They read `ready` rather than `subject` so none of them runs in the commit
+     that first shows the file — see `analysed` above. */
   const index = useMemo(
-    () => (subject === null ? new Map<string, never[]>() : signalIndex(subject, rules)),
-    [subject],
+    () => (ready === null ? new Map<string, never[]>() : signalIndex(ready, ruleSet.rules)),
+    [ready, ruleSet.rules],
   );
   const signals = useMemo(() => signalRows(index), [index]);
 
@@ -225,7 +354,7 @@ export function App(): React.JSX.Element {
    * Structurally identical sibling sequences. On the fixture this is one group:
    * the four Pulses, 112 of the 133 nodes, differing in eight attributes.
    */
-  const repeats = useMemo(() => (subject === null ? [] : similarGroups(subject)), [subject]);
+  const repeats = useMemo(() => (ready === null ? [] : similarGroups(ready)), [ready]);
   const comparison = useMemo(() => {
     const group = repeats[repeat];
     if (subject === null || group === undefined) return null;
@@ -238,42 +367,60 @@ export function App(): React.JSX.Element {
 
   const findings = useMemo(
     () =>
-      subject === null
+      ready === null
         ? { findings: [], counts: EMPTY_COUNTS, siblings: [] }
-        : lint(subject, rules),
-    [subject],
+        : lint(ready, ruleSet.rules),
+    [ready, ruleSet.rules],
   );
 
   const criteria = useMemo(
-    () => (subject === null ? [] : criteriaTable(subject, rules)),
-    [subject],
+    () => (ready === null ? [] : criteriaTable(ready, ruleSet.rules)),
+    [ready, ruleSet.rules],
   );
 
   const abortRoutes = useMemo(
-    () => (subject === null ? null : failEdges(subject)),
-    [subject],
+    () => (ready === null ? null : failEdges(ready)),
+    [ready],
   );
 
   const duration = useMemo(
-    () => (subject === null ? EMPTY_DURATION : durations(subject, rules)),
-    [subject],
+    () => (ready === null ? EMPTY_DURATION : durations(ready, ruleSet.rules, subjectAdj ?? undefined)),
+    [ready, subjectAdj, ruleSet.rules],
   );
 
   const stepOffsets = useMemo(
-    () => (subject === null ? new Map<string, Offset>() : offsets(subject, rules)),
-    [subject],
+    () => (ready === null ? new Map<string, Offset>() : offsets(ready, ruleSet.rules, subjectAdj ?? undefined)),
+    [ready, subjectAdj, ruleSet.rules],
   );
 
   const terminals = useMemo(
-    () => (subject === null ? 0 : terminalCount(subject)),
-    [subject],
+    () => (ready === null ? 0 : terminalCount(ready, subjectAdj ?? undefined)),
+    [ready, subjectAdj],
   );
 
   /** Which criteria still lie in front of the selected step. */
   const ahead = useMemo(() => {
-    if (subject === null || selected === null || !subject.nodes.has(selected)) return null;
-    return criteriaAhead(subject, selected, criteria, adjacency(subject));
-  }, [subject, selected, criteria]);
+    if (subject === null || subjectAdj === null) return null;
+    if (selected === null || !subject.nodes.has(selected)) return null;
+    return criteriaAhead(subject, selected, criteria, subjectAdj);
+  }, [subject, subjectAdj, selected, criteria]);
+
+  /**
+   * ELK results for this file, keyed by what determines one.
+   *
+   * A collapse toggle and a Grouped/Compact flip each cost a full ELK pass —
+   * 10.7 s on a 5 733-node graph — including re-opening a fold that was closed
+   * a second ago. ELK is deterministic, so the second pass can only produce
+   * what the first one did.
+   *
+   * A fresh Map per graph, built during render rather than in an effect, so the
+   * layout effect below can never read a cache belonging to the previous file.
+   */
+  const layoutCache = useMemo(
+    () => new Map<string, LayoutResult>(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- identity is the point
+    [graph, ruleSet.rules],
+  );
 
   /**
    * Layout runs whenever the visible graph or the mode changes — a collapse
@@ -289,11 +436,41 @@ export function App(): React.JSX.Element {
     const ticket = ++run.current;
     setBusy(true);
 
-    const flow = toFlow(asGraph(graph, view), rules, {
+    // Everything that determines an arrangement. The Map is already per graph
+    // and per rule file, so only the fold state and the mode go in the key.
+    const key = `${mode}|${[...collapsed].sort().join(',')}`;
+    const cached = layoutCache.get(key);
+
+    // Always built: `toFlow` is 14 ms on a 5 733-node graph against ELK's
+    // 10.7 s, so it is not worth the risk of caching an edge list beside the
+    // positions and having the two disagree. Only the layout is cached.
+    const flow = toFlow(asGraph(graph, view), ruleSet.rules, {
       collapsedCounts: view.collapsedCounts,
     });
-    void layout(flow.nodes, flow.edges, mode)
+
+    const pass: Promise<LayoutResult> =
+      cached === undefined
+        ? layout(flow.nodes, flow.edges, mode)
+        : // Positions are handed to React Flow, which replaces node objects as
+          // they are dragged. Copy them so a cached arrangement cannot be
+          // edited by the session that used it.
+          Promise.resolve({
+            ...cached,
+            nodes: cached.nodes.map((n) => ({ ...n, position: { ...n.position } })),
+            elapsedMs: 0,
+          });
+
+    void pass
       .then((placed) => {
+        if (cached === undefined) {
+          // Oldest out first. A Map iterates in insertion order, so the first
+          // key is the least recently added.
+          if (layoutCache.size >= LAYOUT_CACHE_LIMIT) {
+            const oldest = layoutCache.keys().next().value;
+            if (oldest !== undefined) layoutCache.delete(oldest);
+          }
+          layoutCache.set(key, placed);
+        }
         if (ticket !== run.current) return;
         // A saved arrangement wins over the fresh one, node by node. A uid the
         // sidecar does not mention keeps its ELK position rather than piling up
@@ -321,24 +498,55 @@ export function App(): React.JSX.Element {
         setRoutes(placed.routes);
         setElapsedMs(placed.elapsedMs);
         setLayoutKey((k) => k + 1);
+        goodMode.current = mode;
       })
       .catch((err: unknown) => {
         if (ticket !== run.current) return;
-        setError(`layout failed — ${(err as Error).message}`);
+        setError(
+          err instanceof LayoutTimeout
+            ? err.message
+            : `layout failed — ${(err as Error).message}`,
+        );
+        setDismissed(false);
+        // Keep the arrangement already on screen and put the toolbar back in
+        // step with it. Reverting re-runs the effect, which hits the cache for
+        // the mode that worked and lands immediately.
+        if (err instanceof LayoutTimeout && mode !== goodMode.current) {
+          setMode(goodMode.current);
+        }
       })
       .finally(() => {
         if (ticket === run.current) setBusy(false);
       });
-  }, [graph, view, mode, sidecar, pass]);
+  }, [graph, view, collapsed, mode, sidecar, pass, layoutCache, ruleSet.rules]);
 
-  const load = useCallback((xml: string, fileName: string): void => {
+  /**
+   * Parse and show a sequence. `withRules` lets a newly dropped rule file
+   * re-parse the file already on screen without waiting for React to commit
+   * the new rule set first.
+   */
+  const load = useCallback(
+    (xml: string, fileName: string, withRules?: Rules): void => {
+    const rules = withRules ?? ruleSetRef.current.rules;
     setBusy(true);
     setError(null);
     setDismissed(false);
+    sourceRef.current = { xml, fileName };
     try {
       const parsed = parse(xml, { rules, domParser: new DOMParser() });
-      setLoaded({ graph: parsed, fileName, snippets: snippetsFor(xml, parsed) });
-      setCollapsed(NO_COLLAPSE);
+      const doc = new DOMParser().parseFromString(xml, 'application/xml');
+      setLoaded({
+        graph: parsed,
+        fileName,
+        snippets: snippetsFor(xml, parsed, rules),
+        profile: profile(doc, rules),
+      });
+      // A large file opens folded. The alternative is a ten-second freeze on
+      // arrival, and the reader has not yet said which part they want. Empty
+      // for anything under the budget, so the usual case is untouched.
+      const folded = autoCollapse(parsed, LAYOUT_BUDGET);
+      setCollapsed(folded.size === 0 ? NO_COLLAPSE : folded);
+      setAutoFolded(folded.size);
       setWarnings(parsed.warnings);
       setSelected(null);
       setFocus(null);
@@ -366,8 +574,51 @@ export function App(): React.JSX.Element {
       setLoaded(null);
       setWarnings([]);
       setBusy(false);
+      setAutoFolded(0);
     }
-  }, []);
+    },
+    [],
+  );
+
+  /**
+   * A rule file, dropped like everything else — spec invariant 2 taken at its
+   * word. Schema knowledge lives in `rules.yaml`, so a schema the build has
+   * never seen is a file to drop, not a release to cut.
+   *
+   * The sequence on screen is re-parsed with the new rules immediately. A rule
+   * file that loads but produces a worse graph is still an improvement over
+   * one that silently does not apply until the next drop.
+   */
+  const loadRuleFile = useCallback((text: string, fileName: string): void => {
+    let next: Rules;
+    try {
+      next = loadRules(text);
+    } catch (err) {
+      // RuleFileError already names the offending key, which is the whole
+      // reason the loader is loud.
+      setError(
+        `${fileName}: ${err instanceof RuleFileError || err instanceof Error ? err.message : 'not a rule file'}`,
+      );
+      setDismissed(false);
+      return;
+    }
+
+    setRuleSet({ rules: next, file: fileName });
+    const source = sourceRef.current;
+    if (source === null) {
+      setError(null);
+      setDrawerTab('schema');
+      setDrawerOpen(true);
+      return;
+    }
+    load(source.xml, source.fileName, next);
+  }, [load]);
+
+  const clearRuleFile = useCallback((): void => {
+    setRuleSet({ rules: BUILT_IN_RULES, file: null });
+    const source = sourceRef.current;
+    if (source !== null) load(source.xml, source.fileName, BUILT_IN_RULES);
+  }, [load]);
 
   /**
    * A layout sidecar — spec 7.8. The mode and the collapsed set land now; the
@@ -404,9 +655,15 @@ export function App(): React.JSX.Element {
    * does not parse fails here the way it would on the page.
    */
   const loadBaseline = useCallback((xml: string, name: string): void => {
+    const rules = ruleSetRef.current.rules;
     try {
       const parsed = parse(xml, { rules, domParser: new DOMParser() });
-      setBaseline({ graph: parsed, fileName: name, snippets: snippetsFor(xml, parsed) });
+      setBaseline({
+        graph: parsed,
+        fileName: name,
+        snippets: snippetsFor(xml, parsed, rules),
+        profile: profile(new DOMParser().parseFromString(xml, 'application/xml'), rules),
+      });
       setDiffRow(null);
       setError(null);
     } catch (err) {
@@ -471,6 +728,7 @@ export function App(): React.JSX.Element {
         // than being fed to the XML parser.
         if (/\.json$/i.test(file.name)) loadLayout(text, file.name);
         else if (/\.(csv|tsv)$/i.test(file.name)) loadSignalNames(text, file.name);
+        else if (/\.ya?ml$/i.test(file.name)) loadRuleFile(text, file.name);
         else load(text, file.name);
       };
       reader.onerror = () => setError(`${file.name}: could not be read`);
@@ -485,7 +743,7 @@ export function App(): React.JSX.Element {
       window.removeEventListener('dragleave', leave);
       window.removeEventListener('drop', drop);
     };
-  }, [load]);
+  }, [load, loadLayout, loadRuleFile, loadSignalNames]);
 
   /**
    * Select, expand whatever is hiding it, and bring it into view. A search hit
@@ -551,21 +809,40 @@ export function App(): React.JSX.Element {
    */
   const highlight = useMemo(() => {
     if (graph === null || view === null || selected === null || !trace) return null;
-    const subject = view.lifted.get(selected) ?? selected;
-    const set = pathSet(graph, selected);
+
+    // A container carries no flow, so tracing one returns nothing and dims all
+    // 107 leaves. Trace where the flow actually enters it instead. The
+    // container stays selected; only the subject of the walk differs.
+    const from = firstLeafOf(graph, selected);
+    if (from === null) return null;
+
+    const set = pathSet(graph, from, graphAdj ?? undefined);
     const lift = (uid: string): string => view.lifted.get(uid) ?? uid;
+    const liftNodes = (uids: Iterable<string>): Set<string> =>
+      new Set([...uids].map(lift));
+    // A lifted edge whose ends collapse to the same node is an edge *inside* a
+    // folded sequence: it says nothing on the canvas and would draw a self-loop.
+    const liftEdges = (edges: readonly SeqEdge[]): Set<string> =>
+      new Set(
+        edges
+          .map((e) => [lift(e.src), e.reason, lift(e.dst)] as const)
+          .filter(([src, , dst]) => src !== dst)
+          .map(([src, reason, dst]) => `${src}|${reason}|${dst}`),
+      );
+
     return {
-      nodes: new Set([subject, ...[...set.nodes].map(lift)]),
-      edges: new Set(
-        set.edges
-          .map((e) => `${lift(e.src)}|${e.reason}|${lift(e.dst)}`)
-          .filter((key) => {
-            const [src, , dst] = key.split('|');
-            return src !== dst;
-          }),
-      ),
+      subject: lift(from),
+      nodes: new Set([lift(selected), lift(from), ...liftNodes(set.nodes)]),
+      edges: liftEdges(set.edges),
+      // Kept apart so the canvas can say "before" and "after" rather than one
+      // undifferentiated blob — on a linear sequence the union is the whole
+      // file and tells the reader nothing.
+      upNodes: liftNodes(set.up.nodes),
+      downNodes: liftNodes(set.down.nodes),
+      upEdges: liftEdges(set.up.edges),
+      downEdges: liftEdges(set.down.edges),
     };
-  }, [graph, view, selected, trace]);
+  }, [graph, graphAdj, view, selected, trace]);
 
   /** Search matches, lifted the same way so a hit inside a fold still reads. */
   const matches = useMemo(() => {
@@ -628,12 +905,26 @@ export function App(): React.JSX.Element {
           !isGroup &&
           ((highlight !== null && highlight.nodes.has(n.id)) ||
             (failLight !== null && failLight.nodes.has(n.id)));
+        // Which side of the selected step it sits on. A node can be both, when
+        // a jump makes a genuine loop, and then it gets neither: "before and
+        // after" is what the union class already says.
+        const up = !isGroup && highlight !== null && highlight.upNodes.has(n.id);
+        const down = !isGroup && highlight !== null && highlight.downNodes.has(n.id);
+        const direction =
+          highlight === null || n.id === highlight.subject
+            ? ''
+            : up && !down
+              ? 'path-up'
+              : down && !up
+                ? 'path-down'
+                : '';
         // Diff classes are not a highlight: they say what happened to the step,
         // and a dimmed ghost is still a ghost. Both may apply at once.
         const change = diff === null ? undefined : diff.status.get(n.id);
         const className = [
           dim ? 'dimmed' : '',
           onPath ? 'on-path' : '',
+          direction,
           change === undefined || change === 'same' ? '' : `diff-${change}`,
         ]
           .filter(Boolean)
@@ -652,6 +943,9 @@ export function App(): React.JSX.Element {
         const onPath =
           (highlight !== null && highlight.edges.has(key)) ||
           (failLight !== null && failLight.edges.has(key));
+        const up = highlight !== null && highlight.upEdges.has(key);
+        const down = highlight !== null && highlight.downEdges.has(key);
+        const direction = up && !down ? 'path-up' : down && !up ? 'path-down' : '';
         const dim =
           (highlight !== null && !highlight.edges.has(key)) ||
           (failLight !== null && !failLight.edges.has(key)) ||
@@ -665,6 +959,7 @@ export function App(): React.JSX.Element {
         const className = [
           dim ? 'dimmed' : '',
           onPath ? 'on-path' : '',
+          direction,
           ghost ? 'diff-removed' : '',
         ]
           .filter(Boolean)
@@ -697,6 +992,17 @@ export function App(): React.JSX.Element {
             <b>{visibleCount}</b>
             {visibleCount === graph.nodes.size ? '' : ` / ${graph.nodes.size}`} nodes ·{' '}
             <b>{edges.length}</b> edges · <b>{elapsedMs}</b> ms
+            {autoFolded > 0 && (
+              <>
+                {' · '}
+                <span
+                  className="auto-folded"
+                  title="Laying out every node at once takes ten seconds on a file this size. Expand all in the outline to see the whole thing."
+                >
+                  opened folded ({autoFolded} sequences)
+                </span>
+              </>
+            )}
             {diff !== null && (
               <>
                 {' · '}
@@ -733,7 +1039,7 @@ export function App(): React.JSX.Element {
           aria-pressed={trace}
           disabled={graph === null}
           onClick={() => setTrace((t) => !t)}
-          title="Highlight every path into and out of the selected step, dimming the rest"
+          title="Colour what runs before the selected step and what runs after it, dimming the rest"
         >
           Trace paths
         </button>
@@ -838,7 +1144,11 @@ export function App(): React.JSX.Element {
         signalNames={signalNames}
         signalNamesFile={signalNamesFile}
         onClearSignalNames={clearSignalNames}
-        rules={rules}
+        profile={loaded?.profile ?? EMPTY_PROFILE}
+        schemaGaps={schemaGaps}
+        rulesFile={ruleSet.file}
+        onClearRules={clearRuleFile}
+        rules={ruleSet.rules}
         fileName={loaded?.fileName ?? 'sequence.xml'}
         nodes={renderNodes}
         edges={renderEdges}

@@ -12,6 +12,7 @@ version: 1
 containers:
   - TestSequence
   - Sequence
+  - Loop
 
 # Elements that are not steps and produce no node. Their content may still be
 # surfaced in the inspector (see `inspector_children`).
@@ -25,6 +26,12 @@ ignore:
   - Comparison
   - DynamicName
   - Text
+  # A prompt's message body. Its <Text> child is lifted into the inspector by
+  # `inspector_children` below, so nothing is lost by not making it a node.
+  - Message
+  # Plant data that rides along in the same file and is not part of the flow.
+  - TemperatureProfile
+  - Point
 
 # Recognised leaf step elements. Anything in step position that is not listed
 # here still renders, as a plain rectangle, and raises an UNKNOWN_ELEMENT
@@ -45,16 +52,26 @@ steps:
   - PlayStatusTone
   - StartLogging
   - StopLogging
+  - SelectOption
+  - RecordData
+  - UserInputBoolean
+  - ClearBaseline
+  - AcceptCalibration
+  - AcceptBaseline
 
 # Non-step children whose attributes are merged into the parent node's
 # inspector view. Comparison holds the actual condition for a ConditionStep.
 inspector_children:
   ConditionStep: [Comparison]
+  # The prompt shown to the operator. Nested two deep — <Message><Text/> — which
+  # is why the lookup searches descendants rather than direct children.
+  UserInputBoolean: [Text]
 
 # Node shape by element type.
 shapes:
   ConditionStep:          diamond
   TestCriteriaEvaluation: hexagon
+  UserInputBoolean:       diamond
   GoTo:                   rounded
   default:                rect
 
@@ -62,6 +79,7 @@ shapes:
 kinds:
   ConditionStep:          decision
   TestCriteriaEvaluation: criteria
+  UserInputBoolean:       decision
   GoTo:                   jump
   default:                action
 
@@ -116,6 +134,8 @@ labels:
   WaitStep:         [time]
   StartPeriodicLog: [loggedGroupName, interval_s]
   StopPeriodicLog:  [groupName]
+  SelectOption:     [optionTag]
+  RecordData:       [type, durationSec]
 
 # Attributes treated as signal/tag references, for the cross-reference index.
 signal_attrs:
@@ -125,6 +145,8 @@ signal_attrs:
   - enumTag
   - variableTag
   - tag
+  - optionTag
+  - groupTag
 
 # Attributes holding references to definitions outside this file. Unresolvable
 # by design — do not emit an unresolved-target warning for these.
@@ -145,8 +167,24 @@ external_refs:
 durations:
   waits:
     - time
+    # Time spent averaging a reading. Deliberately a wait and not a timeout: a
+    # recording of a stated duration takes that long every time.
+    - durationSec
   timeouts:
     - timeoutSeconds
+
+# Containers that repeat. The back edge runs from the container's last leaf to
+# its first, labelled with `count`, and carries `reason: loop` so the timing
+# report can leave it out of the path arithmetic — see src/core/duration.ts.
+#
+# `period` is the interval between iterations, reported beside the count. It is
+# not added to the estimate: a loop that repeats every hour and takes a minute
+# spends the other 59 waiting, and which of those a reader wants depends on the
+# question they are asking.
+loops:
+  Loop:
+    count:  iterations
+    period: period
 
 # Render a target once as a shared terminal, with dotted inbound edges, when
 # more than this many edges converge on it. See spec section 4.5.

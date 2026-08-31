@@ -75,6 +75,48 @@ function liftMap(graph: Graph, collapsed: ReadonlySet<string>): Map<string, stri
  * Passing an empty set returns the whole graph, so callers never need a
  * special case for "nothing collapsed".
  */
+/**
+ * Containers to fold so the first layout is not a ten-second freeze.
+ *
+ * ELK is the whole cost of opening a file and it scales badly: measured over
+ * generated graphs, 581 nodes lay out in 1.2 s, 2 295 in 2.9 s and 5 733 in
+ * **10.7 s**. Every other stage in the pipeline put together is under 200 ms at
+ * that size, so nothing else is worth optimising until this is answered, and
+ * the only thing that answers it is giving ELK fewer nodes.
+ *
+ * Folds the *deepest* containers first and stops the moment the budget is met.
+ * Deepest-first hides the least: an inner group folds to one box inside a
+ * structure the reader can still see and open, where folding from the top would
+ * present a file as three rectangles. It is also why this returns as soon as it
+ * is under budget rather than folding everything it can.
+ *
+ * Returns an empty set for any graph already under budget — which is every file
+ * of the size this tool was built on, so the common case is untouched.
+ */
+export function autoCollapse(graph: Graph, budget: number): Set<string> {
+  if (graph.nodes.size <= budget) return new Set();
+
+  const depths = new Map<number, string[]>();
+  let deepest = 0;
+  for (const uid of graph.containers.keys()) {
+    const node = graph.nodes.get(uid);
+    if (node === undefined) continue;
+    const bucket = depths.get(node.depth) ?? [];
+    bucket.push(uid);
+    depths.set(node.depth, bucket);
+    if (node.depth > deepest) deepest = node.depth;
+  }
+
+  const collapsed = new Set<string>();
+  // Depth 1 is the document root: folding it leaves a single box and no
+  // document, which is not a view of anything.
+  for (let depth = deepest; depth >= 2; depth--) {
+    for (const uid of depths.get(depth) ?? []) collapsed.add(uid);
+    if (visibleGraph(graph, collapsed).nodes.size <= budget) break;
+  }
+  return collapsed;
+}
+
 export function visibleGraph(graph: Graph, collapsed: ReadonlySet<string>): CollapsedView {
   const lifted = liftMap(graph, collapsed);
 

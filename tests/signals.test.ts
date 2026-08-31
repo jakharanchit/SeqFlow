@@ -22,20 +22,20 @@ describe('signal index', () => {
     expect(nodesFor(index, 'test_status').size).toBe(15);
   });
 
-  it('lists 8 nodes for power_supply_enable_output', () => {
-    expect(nodesFor(index, 'power_supply_enable_output').size).toBe(8);
+  it('lists 8 nodes for drive_source_enable_output', () => {
+    expect(nodesFor(index, 'drive_source_enable_output').size).toBe(8);
   });
 
   it('reads a ConditionStep signal through its Comparison child', () => {
-    const uids = [...nodesFor(index, 'PackVoltage')];
+    const uids = [...nodesFor(index, 'UnitReading')];
     expect(uids).toHaveLength(4);
     for (const uid of uids) expect(graph.nodes.get(uid)?.element).toBe('ConditionStep');
 
     // Not on the step itself — only reachable through childAttrs.
     for (const uid of uids) {
-      expect(graph.nodes.get(uid)?.attrs['sensorTag']).not.toBe('PackVoltage');
+      expect(graph.nodes.get(uid)?.attrs['sensorTag']).not.toBe('UnitReading');
     }
-    for (const use of index.get('PackVoltage') ?? []) {
+    for (const use of index.get('UnitReading') ?? []) {
       expect(use.via).toBe('Comparison');
       expect(use.attr).toBe('sensorTag');
     }
@@ -44,15 +44,15 @@ describe('signal index', () => {
   it('names every signal actually present in the file', () => {
     expect([...index.keys()].sort()).toEqual(
       [
-        'PackVoltage',
-        'calc_bms_pack_temp_max',
-        'electronic_load_current_setpoint',
-        'electronic_load_enable_input',
-        'electronic_load_operation_mode',
-        'power_supply_current',
-        'power_supply_current_limit',
-        'power_supply_enable_output',
-        'power_supply_voltage_setpoint',
+        'UnitReading',
+        'calc_mod_unit_temp_max',
+        'controlled_load_current_setpoint',
+        'controlled_load_enable_input',
+        'controlled_load_operation_mode',
+        'drive_source_current',
+        'drive_source_current_limit',
+        'drive_source_enable_output',
+        'drive_source_reading_setpoint',
         'test_status',
       ].sort(),
     );

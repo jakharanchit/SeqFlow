@@ -17,6 +17,18 @@ export const rules: Rules = loadRules(read('rules.yaml'));
 export const fixtureXml = read('fixtures', 'Sequence_XML.xml');
 
 /**
+ * The second dialect: a gas-analyzer integration test from a different product
+ * line, wrapped in a <TestSpecification> the battery fixture does not have and
+ * built around a repeating container it does not use.
+ *
+ * There is exactly one of these, and there should stay exactly one. Golden
+ * fixtures pin parser *semantics*, which needs one file per document shape —
+ * not one per file. Checking a corpus in is the failure mode this avoids; the
+ * corpus is checked by `--audit`, over a directory named at runtime.
+ */
+export const gasXml = read('fixtures', 'GasAnalyzer_XML.xml');
+
+/**
  * @xmldom/xmldom stands in for the browser DOMParser under Node. It implements
  * the subset the core uses; the cast bridges the two type declarations.
  */

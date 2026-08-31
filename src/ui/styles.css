@@ -902,6 +902,48 @@ pre.xml {
   stroke-width: 2.4;
 }
 
+/*
+ * Upstream and downstream, told apart.
+ *
+ * `on-path` alone is unreadable on a linear sequence: upstream union downstream
+ * is very nearly the whole file, so one colour lights everything and answers
+ * nothing. Split, the same highlight says "these ran before" and "these run
+ * after", which is worth knowing on a straight chain as much as on a branch.
+ *
+ * The selected step itself keeps the plain accent — it is neither — and so does
+ * anything genuinely on both sides, which only a real loop produces.
+ */
+:root {
+  --path-up: #4f9d76;
+  --path-down: #d08a3c;
+}
+
+.react-flow__node.path-up .rf-node {
+  border-color: var(--path-up);
+}
+
+.react-flow__node.path-down .rf-node {
+  border-color: var(--path-down);
+}
+
+.react-flow__node.path-up .rf-node.shape-diamond,
+.react-flow__node.path-up .rf-node.shape-hexagon {
+  outline-color: var(--path-up);
+}
+
+.react-flow__node.path-down .rf-node.shape-diamond,
+.react-flow__node.path-down .rf-node.shape-hexagon {
+  outline-color: var(--path-down);
+}
+
+.react-flow__edge.path-up .react-flow__edge-path {
+  stroke: var(--path-up);
+}
+
+.react-flow__edge.path-down .react-flow__edge-path {
+  stroke: var(--path-down);
+}
+
 button.tool.on {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -943,6 +985,40 @@ button.tool.on {
 
 .drawer-tabs .spacer {
   flex: 1;
+}
+
+/*
+ * The cluster label. Small, unclickable, and it doubles as the divider — a rule
+ * on its left edge — so grouping the nine tabs costs one row of chrome and no
+ * extra click. Hidden from assistive tech: the tab order already reads in
+ * cluster order, and a decorative word between buttons is noise there.
+ */
+.drawer-tabs .tab-group {
+  margin: 0 6px 0 10px;
+  padding-left: 11px;
+  border-left: 1px solid var(--line);
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.drawer-tabs .tab-group:first-child {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: none;
+}
+
+/* Narrow windows lose the words but keep the rules, so the grouping survives. */
+@media (max-width: 1100px) {
+  .drawer-tabs .tab-group {
+    width: 0;
+    margin: 0 5px 0 7px;
+    overflow: hidden;
+  }
 }
 
 .drawer-tabs button {
@@ -1979,4 +2055,93 @@ table.diff tr.odd-row .diff-attr {
 .signal-names-note a {
   color: var(--accent);
   text-decoration: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* Schema tab                                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The gap report. Two row states and no others: `bad` is the rule file and the
+ * file disagreeing about whether something holds steps, which costs a subtree
+ * if left alone, and `odd` is an element the rule file has no entry for at all.
+ * Everything else is accounted for and is deliberately unremarkable — a table
+ * where every row is coloured says nothing.
+ */
+table.schema-table th {
+  padding: 0 0 4px;
+  text-align: left;
+  color: var(--text-faint);
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--line);
+}
+
+table.schema-table th.num,
+table.schema-table td.num {
+  width: 1%;
+  padding-right: 12px;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+table.schema-table td {
+  padding: 4px 0;
+}
+
+table.schema-table tr.odd td {
+  background: rgba(217, 164, 65, 0.08);
+}
+
+table.schema-table tr.bad td {
+  background: rgba(212, 84, 74, 0.1);
+}
+
+table.schema-table tr.bad td b {
+  color: var(--removed);
+}
+
+table.schema-table td.v code {
+  margin-right: 4px;
+  color: var(--text-dim);
+}
+
+.schema-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.schema-actions h4 {
+  margin: 0;
+}
+
+/* The fragment is meant to be selected and pasted, so it scrolls rather than
+   wrapping: a broken YAML line is worse than a horizontal scrollbar. */
+pre.schema-fragment {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: var(--panel-deep, rgba(0, 0, 0, 0.18));
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre;
+}
+
+/*
+ * A file that opens folded has to say so. Without this the reader sees a
+ * diagram with a tenth of the steps and no reason to think anything is hidden;
+ * the count and the tooltip say what happened and where to undo it.
+ */
+.stat .auto-folded {
+  color: var(--warn);
+  cursor: help;
 }

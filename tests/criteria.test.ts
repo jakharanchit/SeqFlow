@@ -28,10 +28,10 @@ describe('criteria table', () => {
 
   it('names each row from the steps that carry it', () => {
     expect(table.map((row) => row.name).sort()).toEqual([
-      'Acceptance Criteria - ESR Max - 6C',
-      'Acceptance Criteria - Individual Cell OCV',
-      'Acceptance Criteria - Pack OCV',
-      'Acceptance Criteria - Temperature Max',
+      'Acceptance Criteria - Assembly',
+      'Acceptance Criteria - Per-Element Signals',
+      'Acceptance Criteria - Thermal Ceiling',
+      'Acceptance Criteria - Top Val - 4R',
     ]);
   });
 
@@ -45,13 +45,13 @@ describe('criteria table', () => {
   });
 
   it('carries what each definition covers, from the reference itself', () => {
-    const pack = table.find((row) => row.name.endsWith('Pack OCV'))!;
-    expect(pack.members).toEqual(['calc_pack_ocv']);
-    const cells = table.find((row) => row.name.endsWith('Individual Cell OCV'))!;
+    const pack = table.find((row) => row.name.endsWith('- Assembly'))!;
+    expect(pack.members).toEqual(['calc_unit_ref']);
+    const cells = table.find((row) => row.name.endsWith('Per-Element Signals'))!;
     expect(cells.members).toHaveLength(14);
-    expect(cells.members[0]).toBe('calc_cell_ocv_1');
-    const temps = table.find((row) => row.name.endsWith('Temperature Max'))!;
-    expect(temps.members).toEqual(['PackTemps1', 'PackTemps2', 'PackTemps3', 'PackTemps4']);
+    expect(cells.members[0]).toBe('calc_elem_ref_1');
+    const temps = table.find((row) => row.name.endsWith('Thermal Ceiling'))!;
+    expect(temps.members).toEqual(['UnitTemps1', 'UnitTemps2', 'UnitTemps3', 'UnitTemps4']);
   });
 
   it('says the limits are absent rather than showing an empty cell', () => {
@@ -159,7 +159,7 @@ describe('why the path filter was not built', () => {
     // PHASE4-TASKS puts it at "102 of 107". Measured: 99 of the 107 leaves can
     // reach the abort. The remaining 8 are the abort step itself, the 3 steps
     // that follow it inside Abort Sequence, and exactly the 4 the task list
-    // names — "All Pulses Passed", two inside Complete Sequence, and Stop
+    // names — "All Cycles Passed", two inside Complete Sequence, and Stop
     // Recording. Whichever of the two numbers you prefer, a filter that dims
     // four steps out of 107 is a toggle nobody presses twice.
     const adj = adjacency(graph);
@@ -179,6 +179,6 @@ describe('why the path filter was not built', () => {
     expect(cannot.length - abortSequence.length).toBe(4);
     expect(
       cannot.filter((n) => !abortSequence.includes(n)).map((n) => n.name),
-    ).toEqual(['All Pulses Passed', 'Set Status', 'Play Status Tone', 'Stop Recording']);
+    ).toEqual(['All Cycles Passed', 'Set Status', 'Play Status Tone', 'Stop Recording']);
   });
 });

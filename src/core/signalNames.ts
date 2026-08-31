@@ -2,14 +2,14 @@
  * An optional dictionary of human names for signal tags and enum values.
  *
  * The authoring tool's text export prints `Pack Temp max` where the XML says
- * `calc_bms_pack_temp_max`, and `Power Supply Voltage Request` where it says
- * `power_supply_voltage_setpoint`. No transform gets from one to the other:
+ * `calc_mod_unit_temp_max`, and `Drive Source Reading Request` where it says
+ * `drive_source_reading_setpoint`. No transform gets from one to the other:
  * "Request" is not a rendering of "setpoint", it is a different word chosen by
  * whoever named the signal. The names live in a dictionary outside the file.
  *
  * So this module loads one when the user has it, and does nothing when they do
  * not. **With no dictionary loaded, every tag is shown exactly as the XML
- * spells it.** Guessing — title-casing `power_supply_voltage_setpoint` into
+ * spells it.** Guessing — title-casing `drive_source_reading_setpoint` into
  * "Power Supply Voltage Setpoint" — would be right about half the time and
  * silently wrong the rest, which is the one outcome a read-only tool used in a
  * regulated context cannot afford.
@@ -78,7 +78,7 @@ function fields(line: string): string[] {
  * columns — spreadsheets add one whether or not anybody asked.
  *
  * An enum member is keyed `tag:value`, e.g.
- * `electronic_load_operation_mode:2, 2: Constant Current`.
+ * `controlled_load_operation_mode:2, 2: Constant Current`.
  *
  * The first spelling of a key wins. A file that names one tag twice is telling
  * us something is wrong with it, and the count of skipped rows says so rather

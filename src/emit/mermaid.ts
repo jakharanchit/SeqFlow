@@ -19,7 +19,7 @@
  *   noise.
  *
  * - **Every label is quoted.** Four names in the fixture carry Mermaid-hostile
- *   characters, all of the form `6C Pulse (10s)`. A rule that only fires on
+ *   characters, all of the form `4R Cycle (10s)`. A rule that only fires on
  *   known-bad input is a rule nobody maintains, so quote unconditionally.
  *
  * - **The modes are collapse.** `depth N` is `visibleGraph` with every
@@ -413,7 +413,7 @@ export interface MermaidFile {
   text: string;
 }
 
-/** `Pulse 1 - 6C` -> `pulse-1-6c`. Collision-free within one split by suffix. */
+/** `Cycle 1 - 4R` -> `cycle-1-4r`. Collision-free within one split by suffix. */
 export function slug(text: string): string {
   const base = text
     .toLowerCase()

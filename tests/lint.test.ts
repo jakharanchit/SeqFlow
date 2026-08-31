@@ -63,7 +63,7 @@ describe('ODD_SIBLING_ATTR', () => {
     expect(finding.value).toBe('FALSE');
     expect(finding.severity).toBe('warn');
     expect(graph.nodes.get(finding.uid)?.element).toBe('WaitStep');
-    expect(graph.nodes.get(finding.uid)?.name).toBe('6C Pulse (10s)');
+    expect(graph.nodes.get(finding.uid)?.name).toBe('4R Cycle (10s)');
     expect(finding.related).toHaveLength(4);
   });
 
@@ -74,10 +74,10 @@ describe('ODD_SIBLING_ATTR', () => {
     expect(reports).toHaveLength(1);
     expect(reports[0]!.differences).toHaveLength(8);
     expect(reports[0]!.names).toEqual([
-      'Pulse 1 - 6C',
-      'Pulse 2 - 12C',
-      'Pulse 3 - 24C',
-      'Pulse 4 - 36C',
+      'Cycle 1 - 4R',
+      'Cycle 2 - 18R',
+      'Cycle 3 - 32R',
+      'Cycle 4 - 57R',
     ]);
   });
 
@@ -98,7 +98,7 @@ describe('ODD_SIBLING_ATTR', () => {
     const setpoint = siblingDifferences(graph)[0]!.differences.find(
       (d) => d.attr === 'setpoint',
     );
-    expect(setpoint?.values).toEqual(['26.4', '52.8', '105.6', '158.4']);
+    expect(setpoint?.values).toEqual(['11.0', '22.0', '140.2', '210.3']);
     expect(setpoint?.odd).toBe(false);
     expect(setpoint?.klass).toBe('number');
   });
@@ -134,7 +134,7 @@ describe('STALE_TARGET', () => {
     // PHASE4-TASKS says these 16 "point at the abort". They do not: the abort
     // is where the 16 *failStep* values go, and those are live edges, not
     // stale ones. All 16 passStep values name "Complete Sequence" — the step
-    // after the last pulse, which the flow reaches by falling through anyway.
+    // after the last cycle, which the flow reaches by falling through anyway.
     // Believing them costs a reader a jump that is not in the sequence.
     const pass = stale.filter((f) => f.attr === 'passStep');
     expect(pass).toHaveLength(16);
@@ -244,8 +244,8 @@ describe('EXTERNAL_CRITERIA', () => {
 
 describe('reference values', () => {
   it('splits an id from the members it covers', () => {
-    expect(referenceId('718C2399-A=calc_pack_ocv')).toBe('718C2399-A');
-    expect(referenceMembers('718C2399-A=calc_pack_ocv')).toEqual(['calc_pack_ocv']);
+    expect(referenceId('718C2399-A=calc_unit_ref')).toBe('718C2399-A');
+    expect(referenceMembers('718C2399-A=calc_unit_ref')).toEqual(['calc_unit_ref']);
     expect(referenceMembers('X=a, b ,c')).toEqual(['a', 'b', 'c']);
   });
 
@@ -258,17 +258,17 @@ describe('reference values', () => {
 describe('value classification', () => {
   it('sorts the classes the difference table cares about', () => {
     expect(classify(['TRUE', 'FALSE'])).toBe('boolean');
-    expect(classify(['26.4', '158.4'])).toBe('number');
-    expect(classify(['A86510BB-DE6B-49F7-B225-4A470A29695E'])).toBe('reference');
-    expect(classify(['Charging', 'Discharging'])).toBe('enum');
-    expect(classify(['6C Pulse (10s)'])).toBe('text');
+    expect(classify(['11.0', '210.3'])).toBe('number');
+    expect(classify(['A0000050-0000-0000-0000-000000004000'])).toBe('reference');
+    expect(classify(['Exciting', 'Withdrawing'])).toBe('enum');
+    expect(classify(['4R Cycle (10s)'])).toBe('text');
   });
 
   it('does not let one stray value change the class of a whole column', () => {
     // A boolean column with a name in it is a text column: the class is what
     // every value is, never what most of them are.
-    expect(classify(['TRUE', '6C Pulse (10s)'])).toBe('text');
-    expect(classify(['26.4', 'auto'])).toBe('text');
+    expect(classify(['TRUE', '4R Cycle (10s)'])).toBe('text');
+    expect(classify(['11.0', 'auto'])).toBe('text');
   });
 
   it('ignores absent values rather than calling the column text', () => {

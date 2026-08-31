@@ -25,6 +25,32 @@ import {
   type Point,
 } from './elkGraph';
 
+/**
+ * How long a single layout may take before it is abandoned.
+ *
+ * ELK's cost is not a function of node count alone. Measured: a 2 295-node
+ * sequence folded to 295 visible nodes lays out grouped in 4 s and **compact in
+ * 60 s** — the wrapping strategy meets a node with hundreds of inbound edges
+ * and the shape of the problem changes entirely.
+ *
+ * Node count can therefore be budgeted for (see `autoCollapse`) but not relied
+ * on, and the corpus is a database nobody here has read. A wall-clock ceiling
+ * is the only guard that holds for a file we have not seen: past it the tool
+ * says so and keeps the diagram it already had, instead of appearing to hang.
+ */
+export const LAYOUT_TIMEOUT_MS = 60000;
+
+/** Thrown when a layout runs past {@link LAYOUT_TIMEOUT_MS}. */
+export class LayoutTimeout extends Error {
+  constructor(seconds: number) {
+    super(
+      `layout gave up after ${seconds} s. This graph is too tangled to arrange ` +
+        'at this size — fold some sequences in the outline, or stay in Grouped mode',
+    );
+    this.name = 'LayoutTimeout';
+  }
+}
+
 let instance: ElkLike | null = null;
 
 function elk(): ElkLike {
@@ -59,7 +85,21 @@ export async function layout(
 ): Promise<LayoutResult> {
   const subject = nodesForMode(nodes, mode);
   const started = performance.now();
-  const result = await elk().layout(toElk(subject, edges, mode));
+
+  // The worker cannot be interrupted, so this does not stop ELK — it stops the
+  // *waiting*. The run is abandoned and the app keeps the arrangement it had,
+  // which is a great deal better than a canvas that never comes back.
+  let timer = 0;
+  const result = await Promise.race([
+    elk().layout(toElk(subject, edges, mode)),
+    new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(
+        () => reject(new LayoutTimeout(Math.round(LAYOUT_TIMEOUT_MS / 1000))),
+        LAYOUT_TIMEOUT_MS,
+      ) as unknown as number;
+    }),
+  ]).finally(() => clearTimeout(timer));
+
   return {
     nodes: applyLayout(subject, fromElk(result)),
     routes: edgeRoutes(result),

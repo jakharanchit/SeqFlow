@@ -21,7 +21,7 @@ import type { Graph, SeqNode } from './types';
  * A canonical description of a subtree's shape: element names and nesting,
  * nothing else.
  *
- * Names are excluded on purpose. "Discharge at 6C" and "Discharge at 12C" are
+ * Names are excluded on purpose. "Draw down at 4R" and "Draw down at 18R" are
  * the same step parameterised differently, and a key that included the name
  * would call them different structures and report nothing. Names come back as
  * a difference, which is what they are.

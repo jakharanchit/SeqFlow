@@ -81,8 +81,33 @@ export function Timing({
         shown without the other.
       </p>
 
+      {report.loops.length > 0 && (
+        <p className="timing-caveat loops">
+          <b>
+            {report.loops.length} {report.loops.length === 1 ? 'loop repeats' : 'loops repeat'}{' '}
+            {report.loops.map((l) => (l.count === null ? '?' : l.count)).join(' / ')}{' '}
+            {/* Agrees with the counts, not with the number of loops: one loop
+                repeating 15 times is "15 times", not "15 time". */}
+            {report.loops.length === 1 && report.loops[0]?.count === 1 ? 'time' : 'times'}.
+          </b>{' '}
+          The figures above count one iteration of each. Multiplying them in would answer a
+          different question: a loop that repeats every{' '}
+          {humanSeconds(report.loops[0]?.period ?? 0)} and takes a minute spends the rest of
+          each cycle waiting, and whether that counts is the reader&rsquo;s call.
+        </p>
+      )}
+
       <table className="attrs timing-table">
         <tbody>
+          {report.loops.map((loop) => (
+            <tr key={loop.uid}>
+              <td className="k">loop</td>
+              <td className="v">
+                “{loop.name}” × {loop.count ?? '?'}
+                {loop.period !== null && ` every ${humanSeconds(loop.period)}`}
+              </td>
+            </tr>
+          ))}
           <tr>
             <td className="k">across routes</td>
             <td className="v">

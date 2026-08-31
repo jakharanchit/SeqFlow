@@ -13,8 +13,8 @@ import { domParser, fixtureXml, rules } from './helpers';
 
 const graph = parse(fixtureXml, { rules, domParser });
 
-const pulses = [...graph.nodes.values()]
-  .filter((n) => n.kind === 'container' && n.name.startsWith('Pulse '))
+const cycles = [...graph.nodes.values()]
+  .filter((n) => n.kind === 'container' && n.name.startsWith('Cycle '))
   .map((n) => n.uid);
 
 const abort = [...graph.nodes.values()].find(
@@ -33,13 +33,13 @@ describe('path highlighting', () => {
     }
   });
 
-  it('lifts the highlight onto the collapsed Pulses', () => {
-    const view = visibleGraph(graph, new Set(pulses));
+  it('lifts the highlight onto the collapsed Cycles', () => {
+    const view = visibleGraph(graph, new Set(cycles));
     const set = pathSet(graph, abort.uid);
     const lit = new Set([...set.nodes].map((uid) => view.lifted.get(uid) ?? uid));
 
-    // The 16 individual criteria steps are hidden; their four Pulses light up.
-    for (const uid of pulses) expect(lit.has(uid)).toBe(true);
+    // The 16 individual criteria steps are hidden; their four Cycles light up.
+    for (const uid of cycles) expect(lit.has(uid)).toBe(true);
     for (const uid of graph.edges.filter((e) => e.dst === abort.uid).map((e) => e.src)) {
       expect(view.nodes.has(uid)).toBe(false);
     }
@@ -56,7 +56,7 @@ describe('path highlighting', () => {
   });
 
   it('drops edges that lift to a self-loop rather than lighting nothing', () => {
-    const view = visibleGraph(graph, new Set(pulses));
+    const view = visibleGraph(graph, new Set(cycles));
     const lift = (uid: string): string => view.lifted.get(uid) ?? uid;
     const keys = new Set(
       pathSet(graph, abort.uid)
@@ -70,6 +70,6 @@ describe('path highlighting', () => {
     const present = new Set(view.edges.map((e) => `${e.src}|${e.reason}|${e.dst}`));
     for (const key of keys) expect(present.has(key)).toBe(true);
     // The four abort edges are among them.
-    for (const uid of pulses) expect(keys.has(`${uid}|criteria|${abort.uid}`)).toBe(true);
+    for (const uid of cycles) expect(keys.has(`${uid}|criteria|${abort.uid}`)).toBe(true);
   });
 });

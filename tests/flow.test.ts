@@ -56,10 +56,10 @@ describe('flow adapter', () => {
 
   it('renders rule-file label attributes, skipping empty ones', () => {
     const setSwitch = [...graph.nodes.values()].find(
-      (n) => n.name === 'Turn Power Supply On',
+      (n) => n.name === 'Turn Drive Supply On',
     )!;
     const text = paramText(setSwitch, rules);
-    expect(text).toContain('switchTag = power_supply_enable_output');
+    expect(text).toContain('switchTag = drive_source_enable_output');
     expect(text).toContain('state = TRUE');
     expect(text).not.toContain('sensorTag'); // present in XML but empty
   });

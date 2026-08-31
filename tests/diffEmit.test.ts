@@ -31,8 +31,8 @@ async function lay(nodes: FlowNode[], edges: FlowEdge[]) {
  */
 const base = parse(fixtureXml, { rules, domParser });
 
-const FIRST_STATUS = '61DE1D62-F24C-4E8C-AC92-6FA822D91191';
-const PULSE1_WAIT = '18458AB8-D15F-43BD-8E65-BB808A21FC79';
+const FIRST_STATUS = '60000410-0000-0000-0000-000000004000';
+const PULSE1_WAIT = '10000110-0000-0000-0000-000000004000';
 
 const removedTag = new RegExp(`<[A-Za-z]+[^>]*\\buid="${FIRST_STATUS}"[^>]*/>`).exec(
   fixtureXml,

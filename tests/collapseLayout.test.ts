@@ -1,5 +1,5 @@
 /**
- * PHASE2-TASKS task 5: collapsing the four Pulse sequences must make the
+ * PHASE2-TASKS task 5: collapsing the four Cycle sequences must make the
  * grouped layout legible, and every toggle must stay inside the 2 s budget
  * (NFR-5). Both are measurable without a browser, so they are measured here.
  */
@@ -16,8 +16,8 @@ import { domParser, fixtureXml, rules } from './helpers';
 const graph = parse(fixtureXml, { rules, domParser });
 const elk = new ELK() as ElkLike;
 
-const pulses = [...graph.nodes.values()]
-  .filter((n) => n.kind === 'container' && n.name.startsWith('Pulse '))
+const cycles = [...graph.nodes.values()]
+  .filter((n) => n.kind === 'container' && n.name.startsWith('Cycle '))
   .map((n) => n.uid);
 
 interface Run {
@@ -47,7 +47,7 @@ async function layoutCollapsed(collapsed: Set<string>): Promise<Run> {
 }
 
 const expanded = await layoutCollapsed(new Set());
-const folded = await layoutCollapsed(new Set(pulses));
+const folded = await layoutCollapsed(new Set(cycles));
 
 describe('collapse on the canvas', () => {
   it('starts tall enough to be unreadable', () => {
@@ -56,7 +56,7 @@ describe('collapse on the canvas', () => {
     expect(expanded.nodes).toBe(133);
   });
 
-  it('drops under 2000 px with the four Pulses collapsed', () => {
+  it('drops under 2000 px with the four Cycles collapsed', () => {
     expect(folded.nodes).toBe(21);
     expect(folded.height).toBeLessThan(2000);
   });
@@ -67,9 +67,9 @@ describe('collapse on the canvas', () => {
   });
 
   it('renders a collapsed sequence as one node carrying its step count', () => {
-    const view = visibleGraph(graph, new Set(pulses));
+    const view = visibleGraph(graph, new Set(cycles));
     const flow = toFlow(asGraph(graph, view), rules, { collapsedCounts: view.collapsedCounts });
-    for (const uid of pulses) {
+    for (const uid of cycles) {
       const node = flow.nodes.find((n) => n.id === uid);
       expect(node?.type).toBe('seqNode');
       expect(node?.data.collapsed).toBe(28);
@@ -78,11 +78,11 @@ describe('collapse on the canvas', () => {
   });
 
   it('keeps expanded sequences as groups', () => {
-    const view = visibleGraph(graph, new Set(pulses));
+    const view = visibleGraph(graph, new Set(cycles));
     const flow = toFlow(asGraph(graph, view), rules, { collapsedCounts: view.collapsedCounts });
     const groups = flow.nodes.filter((n) => n.type === 'seqGroup');
     expect(groups.length).toBe(view.containers.size);
-    for (const g of groups) expect(pulses).not.toContain(g.id);
+    for (const g of groups) expect(cycles).not.toContain(g.id);
   });
 
   it('restores the full arrangement when expanded again', async () => {

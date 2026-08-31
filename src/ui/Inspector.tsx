@@ -13,6 +13,7 @@ import type { ChangeKind } from '../core/diff';
 import { humanRange, type Offset } from '../core/duration';
 import { type SignalNames } from '../core/signalNames';
 import type { Graph, SeqNode } from '../core/types';
+import { EDGE_COLOR } from '../emit/flow';
 
 export interface InspectorProps {
   graph: Graph | null;
@@ -113,6 +114,15 @@ function Ancestry({
   );
 }
 
+/** reason, label, dashed. Ordered by how often a reader meets them. */
+const LEGEND: readonly (readonly [string, string, boolean])[] = [
+  ['fallthrough', 'fall-through', false],
+  ['branch', 'branch', false],
+  ['criteria', 'criteria fail', true],
+  ['goto', 'goto', false],
+  ['loop', 'loop back', true],
+];
+
 export function Inspector({
   graph,
   selected,
@@ -183,23 +193,41 @@ export function Inspector({
         <div className="section">
           <h3>Edges</h3>
           <div className="legend">
+            {/*
+              Colours come from the emitter's own map so the key cannot drift
+              from the canvas. The dash is the rule file's choice per edge, not
+              per reason; these are the styles those reasons actually carry.
+            */}
+            {LEGEND.map(([reason, label, dashed]) => (
+              <span key={reason}>
+                <i
+                  style={{
+                    borderTop: `2px ${dashed ? 'dashed' : 'solid'} ${EDGE_COLOR[reason]}`,
+                  }}
+                />
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="section">
+          <h3>Trace paths</h3>
+          <div className="legend">
             <span>
-              <i style={{ borderTop: '2px solid #8a94a6' }} />
-              fall-through
+              <i style={{ borderTop: '2px solid var(--path-up)' }} />
+              runs before
             </span>
             <span>
-              <i style={{ borderTop: '2px solid #3b82c4' }} />
-              branch
-            </span>
-            <span>
-              <i style={{ borderTop: '2px dashed #d4544a' }} />
-              criteria fail
-            </span>
-            <span>
-              <i style={{ borderTop: '2px solid #9a6bd0' }} />
-              goto
+              <i style={{ borderTop: '2px solid var(--path-down)' }} />
+              runs after
             </span>
           </div>
+          <p className="hint">
+            A loop&rsquo;s back edge is left out of the walk. Following it would make every
+            step in the loop both before and after every other, which is true and tells you
+            nothing.
+          </p>
         </div>
       </aside>
     );

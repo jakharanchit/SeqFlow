@@ -26,8 +26,17 @@
  * Pure. No DOM, no React.
  */
 
-import { adjacency, terminals, type Adjacency } from './paths';
+import { adjacency, isFlow, terminals, type Adjacency } from './paths';
 import type { Graph, Rules, SeqNode } from './types';
+
+/*
+ * `isFlow` excludes loop back edges — see its definition in `paths.ts`. Here it
+ * is load-bearing twice over: counting a back edge as flow puts the whole loop
+ * body on a cycle, `reverseTopo` then leaves the body unvisited, and the
+ * `paths === 0` fallback quietly truncates the estimate at the loop's entrance.
+ * A wrong number arrived at silently is the failure this module exists to
+ * avoid.
+ */
 
 /* ------------------------------------------------------------------ */
 /* Per-step seconds                                                    */
@@ -101,6 +110,47 @@ export interface DurationReport {
   worst: Range;
   /** `worst.max / nominal.max`. 41 on the fixture. Infinity with no waits. */
   ratio: number;
+  /**
+   * Repeating containers, reported rather than multiplied.
+   *
+   * The estimate above counts one iteration of each. Folding a 25x repeat into
+   * one figure silently is the same failure as adding waits to timeouts: the
+   * reader cannot tell which question the number answers. A loop that repeats
+   * every hour and takes a minute spends the other 59 waiting, and whether that
+   * counts depends entirely on what is being asked.
+   */
+  loops: LoopReport[];
+}
+
+export interface LoopReport {
+  uid: string;
+  name: string;
+  /** Iterations, or null where the rule file names no count attribute. */
+  count: number | null;
+  /** Seconds between iterations, or null. */
+  period: number | null;
+}
+
+/** Repeating containers and what the rule file's attributes say about them. */
+export function loopReports(graph: Graph, rules: Rules): LoopReport[] {
+  const out: LoopReport[] = [];
+  const num = (raw: string | undefined): number | null => {
+    if (raw === undefined || raw === '') return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+  };
+
+  for (const node of graph.nodes.values()) {
+    const rule = rules.loops[node.element];
+    if (rule === undefined) continue;
+    out.push({
+      uid: node.uid,
+      name: node.name,
+      count: rule.count === undefined ? null : num(node.attrs[rule.count]),
+      period: rule.period === undefined ? null : num(node.attrs[rule.period]),
+    });
+  }
+  return out;
 }
 
 interface Totals {
@@ -122,7 +172,10 @@ function reverseTopo(
 ): { order: string[]; cyclic: boolean } {
   const remaining = new Map<string, number>();
   for (const uid of reachable) {
-    remaining.set(uid, (adj.out.get(uid) ?? []).filter((e) => reachable.has(e.dst)).length);
+    remaining.set(
+      uid,
+      (adj.out.get(uid) ?? []).filter((e) => isFlow(e) && reachable.has(e.dst)).length,
+    );
   }
 
   const order: string[] = [];
@@ -131,7 +184,7 @@ function reverseTopo(
     const uid = queue.shift()!;
     order.push(uid);
     for (const e of adj.in.get(uid) ?? []) {
-      if (!reachable.has(e.src)) continue;
+      if (!isFlow(e) || !reachable.has(e.src)) continue;
       const left = (remaining.get(e.src) ?? 0) - 1;
       remaining.set(e.src, left);
       if (left === 0) queue.push(e.src);
@@ -159,6 +212,9 @@ export function pathTotals(
   while (stack.length > 0) {
     const uid = stack.pop()!;
     for (const e of adj.out.get(uid) ?? []) {
+      // Reachability follows loop edges: a step is reached whether the flow
+      // arrives there first time round or on the repeat. Only the *ordering*
+      // below has to ignore them.
       if (reachable.has(e.dst)) continue;
       reachable.add(e.dst);
       stack.push(e.dst);
@@ -171,7 +227,7 @@ export function pathTotals(
   for (const uid of order) {
     const node = graph.nodes.get(uid);
     const own = node === undefined ? ZERO : stepSeconds(node, rules);
-    const outgoing = (adj.out.get(uid) ?? []).filter((e) => reachable.has(e.dst));
+    const outgoing = (adj.out.get(uid) ?? []).filter((e) => isFlow(e) && reachable.has(e.dst));
 
     if (outgoing.length === 0) {
       totals.set(uid, {
@@ -265,6 +321,7 @@ export function durations(
     nominal,
     worst,
     ratio: nominal.max > 0 ? worst.max / nominal.max : Infinity,
+    loops: loopReports(graph, rules),
   };
 }
 
@@ -323,7 +380,7 @@ export function offsets(
     };
 
     for (const e of adj.out.get(uid) ?? []) {
-      if (!reachable.has(e.dst)) continue;
+      if (!isFlow(e) || !reachable.has(e.dst)) continue;
       const existing = before.get(e.dst);
       if (existing === undefined) {
         before.set(e.dst, {

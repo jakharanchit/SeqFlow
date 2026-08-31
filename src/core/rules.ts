@@ -10,7 +10,15 @@
  */
 
 import { parse as parseYaml } from 'yaml';
-import type { Durations, EdgeRule, EdgeStyle, NodeKind, NodeShape, Rules } from './types';
+import type {
+  Durations,
+  EdgeRule,
+  EdgeStyle,
+  LoopRule,
+  NodeKind,
+  NodeShape,
+  Rules,
+} from './types';
 
 /** Thrown for any structural problem in the rule file. */
 export class RuleFileError extends Error {
@@ -26,7 +34,16 @@ export class RuleFileError extends Error {
 const SHAPES: readonly NodeShape[] = ['rect', 'diamond', 'hexagon', 'rounded', 'container'];
 const KINDS: readonly NodeKind[] = ['action', 'decision', 'criteria', 'jump', 'container'];
 const STYLES: readonly EdgeStyle[] = ['solid', 'dotted'];
-const REASONS: readonly EdgeRule['reason'][] = ['fallthrough', 'goto', 'branch', 'criteria'];
+// 'fallthrough' and 'loop' are listed so a rule file naming one gets the
+// message that says where it actually comes from, rather than "expected one
+// of ...". Both are rejected below.
+const REASONS: readonly EdgeRule['reason'][] = [
+  'fallthrough',
+  'goto',
+  'branch',
+  'criteria',
+  'loop',
+];
 
 type Raw = Record<string, unknown>;
 
@@ -132,6 +149,44 @@ function durations(root: Raw): Durations {
   return out;
 }
 
+/**
+ * `loops: { Element: { count: attr, period: attr } }`.
+ *
+ * Optional; absent means no element repeats and no back edge is ever drawn.
+ * Both inner keys are optional too — a loop with no count attribute still
+ * gets its back edge, just without a `×N` label.
+ */
+function loopRules(root: Raw): Record<string, LoopRule> {
+  const v = root['loops'];
+  if (v === undefined || v === null) return {};
+  if (!isRecord(v)) {
+    throw new RuleFileError('loops', `expected a mapping, got ${typeof v}`);
+  }
+
+  const out: Record<string, LoopRule> = {};
+  for (const [element, raw] of Object.entries(v)) {
+    const at = `loops.${element}`;
+    if (!isRecord(raw)) {
+      throw new RuleFileError(at, 'expected a mapping of count/period to attribute names');
+    }
+    const attr = (key: 'count' | 'period'): string | undefined => {
+      const value = raw[key];
+      if (value === undefined || value === null) return undefined;
+      if (typeof value !== 'string' || value === '') {
+        throw new RuleFileError(`${at}.${key}`, 'expected a non-empty attribute name');
+      }
+      return value;
+    };
+    const count = attr('count');
+    const period = attr('period');
+    out[element] = {
+      ...(count === undefined ? {} : { count }),
+      ...(period === undefined ? {} : { period }),
+    };
+  }
+  return out;
+}
+
 function edgeRules(root: Raw): EdgeRule[] {
   const v = req(root, 'edges');
   if (!Array.isArray(v)) {
@@ -181,10 +236,11 @@ function edgeRules(root: Raw): EdgeRule[] {
     if (typeof reason !== 'string' || !REASONS.includes(reason as EdgeRule['reason'])) {
       throw new RuleFileError(`${at}.reason`, `expected one of ${REASONS.join(' | ')}`);
     }
-    if (reason === 'fallthrough') {
+    if (reason === 'fallthrough' || reason === 'loop') {
       throw new RuleFileError(
         `${at}.reason`,
-        'fallthrough is synthesised by the parser, not declared as an edge rule',
+        `${reason} is synthesised by the parser, not declared as an edge rule` +
+          (reason === 'loop' ? ' — see the `loops:` section' : ''),
       );
     }
 
@@ -246,6 +302,7 @@ export function loadRules(yamlText: string): Rules {
     signalAttrs: doc['signal_attrs'] === undefined ? [] : strArray(doc, 'signal_attrs'),
     externalRefs: doc['external_refs'] === undefined ? [] : strArray(doc, 'external_refs'),
     durations: durations(doc),
+    loops: loopRules(doc),
     convergenceThreshold: threshold,
   };
 }

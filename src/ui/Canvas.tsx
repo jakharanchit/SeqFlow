@@ -20,7 +20,7 @@ import {
   type NodeMouseHandler,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { EDGE_COLOR, type FlowEdge, type FlowNode, type FlowNodeData } from '../emit/flow';
 import { fitZoom, graphBounds } from '../layout/elkGraph';
@@ -41,6 +41,22 @@ const FAR_SCALE = 0.25;
 const MIN_ZOOM = 0.02;
 const MAX_ZOOM = 2.5;
 const FIT_PADDING = 0.06;
+
+/**
+ * Slack around the diagram, in flow units, beyond which panning stops.
+ *
+ * Without a `translateExtent` React Flow pans forever, and an 8900 px column is
+ * easy to lose off the edge of an empty canvas with nothing but the fit button
+ * to get back. The margin has to be at least half a viewport or a node at the
+ * extreme edge could never be brought to the centre, so it is measured from the
+ * pane rather than being a constant — with a floor for the case where the pane
+ * has not been measured yet.
+ *
+ * It is a margin at zoom 1. Zoomed in, half a viewport is *fewer* flow units,
+ * so this is more than enough; zoomed out, more of the graph is on screen and
+ * React Flow clamps the pan to the extent on its own.
+ */
+const MIN_PAN_MARGIN = 400;
 
 const KIND_COLOR: Record<string, string> = {
   action: '#3c86c9',
@@ -106,13 +122,79 @@ export function Canvas({
    * scale 1 off the top-left corner. Our node boxes already carry exact sizes
    * from the layout pass, so there is nothing to wait for.
    */
-  const fitAll = useCallback((): void => {
+  /**
+   * The pane's size in CSS pixels, tracked so the pan margin can be half of it.
+   * Only the margin depends on this, so a resize that changes nothing visible
+   * costs one state write and no layout.
+   */
+  const [pane, setPane] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const el = wrap.current;
+    if (el === null) return;
+    const measure = (): void =>
+      setPane((prev) =>
+        prev.width === el.clientWidth && prev.height === el.clientHeight
+          ? prev
+          : { width: el.clientWidth, height: el.clientHeight },
+      );
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  /**
+   * How far the canvas may be dragged: the diagram's own bounds plus enough
+   * slack to bring any edge of it to the middle of the pane.
+   *
+   * Measured from ELK's geometry via `graphBounds`, the same source the fit
+   * uses, so the two can never disagree about where the diagram is.
+   */
+  const translateExtent = useMemo((): [[number, number], [number, number]] => {
+    const box = graphBounds(nodes);
+    if (box === null) return [[-Infinity, -Infinity], [Infinity, Infinity]];
+    const mx = Math.max(MIN_PAN_MARGIN, pane.width / 2);
+    const my = Math.max(MIN_PAN_MARGIN, pane.height / 2);
+    return [
+      [box.x - mx, box.y - my],
+      [box.x + box.width + mx, box.y + box.height + my],
+    ];
+  }, [nodes, pane]);
+
+  /**
+   * Returns false when there was nothing to fit *yet* — no nodes, or a pane the
+   * browser has not measured. The caller retries.
+   *
+   * That return value is the whole point. `fitZoom` falls back to a zoom of 1
+   * on a zero-sized pane, and a silent scale-1 fit leaves a 27 000 px graph
+   * off the corner of the screen looking like an empty canvas. It is the same
+   * failure React Flow's own `fitView` has — which is why this function exists
+   * — and it turns out our replacement could reach it too, on a big file where
+   * the layout lands before the pane has settled.
+   */
+  const fitAll = useCallback((): boolean => {
     const box = graphBounds(nodes);
     const el = wrap.current;
-    if (box === null || el === null) return;
-    const zoom = fitZoom(box, el.clientWidth, el.clientHeight, FIT_PADDING, MIN_ZOOM, MAX_ZOOM);
+    if (box === null || el === null) return false;
+    const width = el.clientWidth;
+    const height = el.clientHeight;
+    if (width <= 0 || height <= 0 || box.width <= 0 || box.height <= 0) return false;
+
+    const zoom = fitZoom(box, width, height, FIT_PADDING, MIN_ZOOM, MAX_ZOOM);
     void flow.setCenter(box.x + box.width / 2, box.y + box.height / 2, { zoom, duration: 0 });
+
+    // Check the move actually happened rather than trusting the call.
+    //
+    // `setCenter` is a no-op until React Flow has built its pan/zoom handler,
+    // and it reports nothing when it declines — so on a big file, where the
+    // layout lands early, the viewport stays at the identity transform and the
+    // reader gets a blank canvas. Reading the zoom back is the only way to
+    // know. `translateExtent` can shift the *translation* afterwards, which is
+    // correct and expected, so only the zoom is compared.
+    if (Math.abs(flow.getZoom() - zoom) > 1e-6) return false;
+
     setZoomVar(zoom);
+    return true;
   }, [nodes, flow, setZoomVar]);
 
   /*
@@ -125,9 +207,42 @@ export function Canvas({
     latestFit.current = fitAll;
   }, [fitAll]);
 
+  /*
+   * A pane that had no size and now has one gets the fit it missed.
+   *
+   * The retry below gives up after a couple of seconds, which is right — it
+   * must not spin forever — but a pane can be unmeasurable for much longer
+   * than that: a collapsed split, a hidden tab, a window restored from
+   * minimised. Refitting on the transition costs nothing and is the difference
+   * between a graph and an apparently empty canvas.
+   */
+  const hadSize = useRef(false);
+  useEffect(() => {
+    const measured = pane.width > 0 && pane.height > 0;
+    const appeared = measured && !hadSize.current;
+    hadSize.current = measured;
+    if (appeared && layoutKey > 0) latestFit.current();
+  }, [pane, layoutKey]);
+
   useEffect(() => {
     if (layoutKey === 0) return;
-    const id = window.setTimeout(() => latestFit.current(), 60);
+    // Retry rather than firing once and hoping. A large file finishes its
+    // layout while the pane is still being measured, and a fit that no-ops
+    // there leaves the reader looking at blank canvas with no clue a graph was
+    // drawn — the exact failure this whole approach exists to avoid.
+    //
+    // On a timer and *not* on requestAnimationFrame. Frames do not run in a
+    // hidden or throttled pane, which is precisely when the pane also measures
+    // zero and the retry is most needed: rAF here means one attempt, silently,
+    // forever. The same rule already governs every viewport move in this file.
+    let attempts = 0;
+    let id = 0;
+    const attempt = (): void => {
+      if (latestFit.current()) return;
+      if (++attempts > 40) return;
+      id = window.setTimeout(attempt, 50);
+    };
+    id = window.setTimeout(attempt, 60);
     return () => window.clearTimeout(id);
   }, [layoutKey]);
 
@@ -246,6 +361,9 @@ export function Canvas({
         zoomOnDoubleClick={false}
         minZoom={MIN_ZOOM}
         maxZoom={MAX_ZOOM}
+        // Panning stops at the edge of the diagram. Zooming is not bounded by
+        // this: MIN_ZOOM still pulls back far enough to see the whole column.
+        translateExtent={translateExtent}
         proOptions={{ hideAttribution: true }}
         defaultEdgeOptions={{ type: 'smoothstep' }}
       >

@@ -25,10 +25,10 @@ function revise(edit: (xml: string) => string): Graph {
   return parse(edit(fixtureXml), { rules, domParser });
 }
 
-/* The 10 s wait in Pulse 1 — the step Phase 2 task 10 found. */
-const PULSE1_WAIT = '18458AB8-D15F-43BD-8E65-BB808A21FC79';
+/* The 10 s wait in Cycle 1 — the step Phase 2 task 10 found. */
+const PULSE1_WAIT = '10000110-0000-0000-0000-000000004000';
 /* "Set Status" in Initialize: the first leaf in the file, and a plain one. */
-const FIRST_STATUS = '61DE1D62-F24C-4E8C-AC92-6FA822D91191';
+const FIRST_STATUS = '60000410-0000-0000-0000-000000004000';
 
 describe('a file against itself', () => {
   const same = parse(fixtureXml, { rules, domParser });
@@ -61,7 +61,7 @@ describe('a file against itself', () => {
 });
 
 describe('an edited attribute', () => {
-  // The Phase 2 finding, corrected: Pulse 1's 10 s wait now logs its start.
+  // The Phase 2 finding, corrected: Cycle 1's 10 s wait now logs its start.
   const next = revise((xml) =>
     xml.replace(tagFor(PULSE1_WAIT), tagFor(PULSE1_WAIT).replace('logStart="FALSE"', 'logStart="TRUE"')),
   );
@@ -82,11 +82,11 @@ describe('an edited attribute', () => {
   });
 
   it('reads a change through a lifted child attribute too', () => {
-    const comparison = revise((xml) => xml.replace('value="53.2"', 'value="61.9"'));
+    const comparison = revise((xml) => xml.replace('value="24.7"', 'value="61.9"'));
     const d = diffGraphs(base, comparison);
     expect(d.counts.changed).toBe(1);
     expect(d.nodes[0]!.attrs).toEqual([
-      { attr: 'Comparison.value', before: '53.2', after: '61.9' },
+      { attr: 'Comparison.value', before: '24.7', after: '61.9' },
     ]);
     expect(base.nodes.get(d.nodes[0]!.uid)?.element).toBe('ConditionStep');
   });
@@ -194,7 +194,7 @@ describe('an inserted step', () => {
 describe('a moved step', () => {
   // The first two steps of Initialize, swapped.
   const first = tagFor(FIRST_STATUS);
-  const second = tagFor('AC53B319-C4CE-4703-80C4-242B77D4F030');
+  const second = tagFor('A0000070-0000-0000-0000-000000004000');
   const next = revise((xml) =>
     xml.replace(first, '@@FIRST@@').replace(second, first).replace('@@FIRST@@', second),
   );
@@ -281,7 +281,7 @@ describe('several mutations at once', () => {
     xml
       .replace(tagFor(PULSE1_WAIT), tagFor(PULSE1_WAIT).replace('logStart="FALSE"', 'logStart="TRUE"'))
       .replace(tagFor(FIRST_STATUS), '')
-      .replace('setpoint="26.4"', 'setpoint="27.0"'),
+      .replace('setpoint="11.0"', 'setpoint="27.0"'),
   );
   const diff = diffGraphs(base, next);
 
