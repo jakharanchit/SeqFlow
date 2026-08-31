@@ -40,7 +40,7 @@ describe('writing', () => {
     expect(Object.keys(sidecar.positions).length).toBe(133);
     expect(sidecar.collapsed.length).toBe(collapsed.size);
     expect(sidecar.mode).toBe('grouped');
-    expect(sidecar.seqviz).toBe(SIDECAR_VERSION);
+    expect(sidecar.seqflow).toBe(SIDECAR_VERSION);
   });
 
   test('133 positions are about 8 KB, so nothing is worth omitting', () => {
@@ -116,7 +116,7 @@ describe('disagreement', () => {
   test('a sidecar from a different sequence loads what it can', () => {
     // The extreme case of the above: nothing matches at all.
     const foreign = {
-      seqviz: SIDECAR_VERSION,
+      seqflow: SIDECAR_VERSION,
       file: 'Other.xml',
       mode: 'grouped',
       collapsed: [],
@@ -135,35 +135,35 @@ describe('reading a hostile file', () => {
     expect(() => parseSidecar('<TestSequence/>')).toThrow(SidecarError);
   });
 
-  test('JSON, but not a seqviz layout — the message says which', () => {
-    expect(() => parseSidecar('{"hello":1}')).toThrow(/not a seqviz layout file/);
+  test('JSON, but not a seqflow layout — the message says which', () => {
+    expect(() => parseSidecar('{"hello":1}')).toThrow(/not a seqflow layout file/);
     expect(() => parseSidecar('[]')).toThrow(SidecarError);
     expect(() => parseSidecar('null')).toThrow(/not an object/);
   });
 
   test('a future version is refused rather than half-read', () => {
-    expect(() => parseSidecar('{"seqviz":99,"positions":{}}')).toThrow(SidecarError);
+    expect(() => parseSidecar('{"seqflow":99,"positions":{}}')).toThrow(SidecarError);
   });
 
   test('no positions object', () => {
-    expect(() => parseSidecar(`{"seqviz":${SIDECAR_VERSION}}`)).toThrow(/no "positions" object/);
+    expect(() => parseSidecar(`{"seqflow":${SIDECAR_VERSION}}`)).toThrow(/no "positions" object/);
   });
 
   test('one malformed entry does not lose the rest', () => {
     const back = parseSidecar(
-      `{"seqviz":${SIDECAR_VERSION},"positions":{"a":[1,2],"b":"nope","c":[3],"d":[null,1],"e":[4,5]}}`,
+      `{"seqflow":${SIDECAR_VERSION},"positions":{"a":[1,2],"b":"nope","c":[3],"d":[null,1],"e":[4,5]}}`,
     );
     expect(Object.keys(back.positions)).toEqual(['a', 'e']);
   });
 
   test('an unknown mode falls back to grouped rather than to nothing', () => {
-    const back = parseSidecar(`{"seqviz":${SIDECAR_VERSION},"mode":"spiral","positions":{}}`);
+    const back = parseSidecar(`{"seqflow":${SIDECAR_VERSION},"mode":"spiral","positions":{}}`);
     expect(back.mode).toBe('grouped');
   });
 
   test('a non-string in collapsed is skipped', () => {
     const back = parseSidecar(
-      `{"seqviz":${SIDECAR_VERSION},"collapsed":["a",7,null,"b"],"positions":{}}`,
+      `{"seqflow":${SIDECAR_VERSION},"collapsed":["a",7,null,"b"],"positions":{}}`,
     );
     expect(back.collapsed).toEqual(['a', 'b']);
   });

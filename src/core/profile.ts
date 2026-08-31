@@ -104,6 +104,7 @@ function statusOf(element: string, rules: Rules): ElementStatus {
   return 'unknown';
 }
 
+/** Walks the raw document against `rules`, reporting every element it finds — known, ignored, or not. */
 export function profile(doc: Document, rules: Rules): SchemaProfile {
   const root = doc.documentElement;
   const out: SchemaProfile = new Map();

@@ -7,6 +7,10 @@ dist/
 # Claude Code working docs: CLAUDE.md, the spec, the task list, launch.json
 .claude/
 
+# Personal reference notes — how things work and why, for explaining this
+# project to someone else. Not written for a public audience; never pushed.
+notes/
+
 # Editor and OS
 .vscode/
 .idea/

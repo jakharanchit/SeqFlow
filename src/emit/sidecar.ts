@@ -20,7 +20,7 @@ import type { FlowNode } from './flow';
 export const SIDECAR_VERSION = 1;
 
 export interface Sidecar {
-  seqviz: number;
+  seqflow: number;
   /** The sequence file this arrangement was made for. Advisory, not a key. */
   file: string;
   /** `grouped` or `compact`. Positions mean different things in each. */
@@ -54,7 +54,7 @@ export function toSidecar(
     positions[node.id] = [round(node.position.x), round(node.position.y)];
   }
   return {
-    seqviz: SIDECAR_VERSION,
+    seqflow: SIDECAR_VERSION,
     file: fileName,
     mode,
     collapsed: [...collapsed].sort(),
@@ -85,9 +85,9 @@ export function parseSidecar(text: string): Sidecar {
   if (typeof raw !== 'object' || raw === null) throw new SidecarError('not an object');
   const value = raw as Record<string, unknown>;
 
-  if (value['seqviz'] !== SIDECAR_VERSION) {
+  if (value['seqflow'] !== SIDECAR_VERSION) {
     throw new SidecarError(
-      `expected "seqviz": ${SIDECAR_VERSION}, found ${JSON.stringify(value['seqviz'])} — not a seqviz layout file`,
+      `expected "seqflow": ${SIDECAR_VERSION}, found ${JSON.stringify(value['seqflow'])} — not a seqflow layout file`,
     );
   }
 
@@ -116,7 +116,7 @@ export function parseSidecar(text: string): Sidecar {
     : [];
 
   return {
-    seqviz: SIDECAR_VERSION,
+    seqflow: SIDECAR_VERSION,
     file: typeof value['file'] === 'string' ? value['file'] : '',
     mode: value['mode'] === 'compact' ? 'compact' : 'grouped',
     collapsed,

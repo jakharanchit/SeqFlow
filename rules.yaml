@@ -1,4 +1,4 @@
-# seqviz rule file
+# seqflow rule file
 # All schema knowledge lives here. The parser is generic and reads this to
 # decide what is a container, what to skip, what shape a node gets, and which
 # attributes create non-sequential edges.

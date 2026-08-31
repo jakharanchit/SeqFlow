@@ -507,7 +507,7 @@ export function Export({
             saved position keeps the automatic one.
           </p>
           <p className="hint">
-            This is the only file seqviz writes. It never writes sequence XML.
+            This is the only file seqflow writes. It never writes sequence XML.
           </p>
         </div>
       )}

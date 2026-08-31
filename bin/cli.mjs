@@ -1,6 +1,6 @@
 /**
- * seqviz CLI, the part that does the work. `bin/seqviz.mjs` is the entry point;
- * it teaches Node how to resolve the core's imports before loading this.
+ * seqflow CLI, the part that does the work. `bin/seqflow.mjs` is the entry
+ * point; it teaches Node how to resolve the core's imports before loading this.
  *
  * Read a sequence XML, emit Mermaid. That is the whole of it: the core has been
  * Node-clean since Phase 1 and every test already runs it under @xmldom/xmldom,
@@ -35,9 +35,9 @@ import { toMermaid, toMermaidSplit } from '../src/emit/mermaid.ts';
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
 
-const USAGE = `seqviz — test sequence XML to Mermaid
+const USAGE = `seqflow — test sequence XML to Mermaid
 
-  node bin/seqviz.mjs <sequence.xml> [options]
+  node bin/seqflow.mjs <sequence.xml> [options]
 
   --mode <mode>     full (default) | overview | depth-N | split
   --out <path>      output file, or directory for --mode split
@@ -334,7 +334,7 @@ export function run(argv) {
     return main(argv);
   } catch (err) {
     const message = err instanceof ParseError || err instanceof Error ? err.message : String(err);
-    process.stderr.write(`seqviz: ${message}\n`);
+    process.stderr.write(`seqflow: ${message}\n`);
     return 2;
   }
 }

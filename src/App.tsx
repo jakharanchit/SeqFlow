@@ -1039,7 +1039,7 @@ export function App(): React.JSX.Element {
     <div className={`app${dragging ? ' dragging' : ''}`}>
       <header className="toolbar">
         <div className="brand">
-          seqviz<span>{loaded?.fileName ?? 'no file loaded'}</span>
+          seqflow<span>{loaded?.fileName ?? 'no file loaded'}</span>
         </div>
         <div className="spacer" />
 

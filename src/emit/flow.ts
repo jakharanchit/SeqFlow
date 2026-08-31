@@ -166,6 +166,7 @@ export interface FlowOptions {
   collapsedCounts?: ReadonlyMap<string, number>;
 }
 
+/** Converts a parsed `Graph` into React Flow's node/edge shape. Pure — no React import here. */
 export function toFlow(graph: Graph, rules: Rules, opts: FlowOptions = {}): FlowGraph {
   const convergent = convergentNodes(graph, rules);
   const collapsedCounts = opts.collapsedCounts;

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * seqviz CLI entry point — spec section 10, Phase 3 task 7.
+ * seqflow CLI entry point — spec section 10, Phase 3 task 7.
  *
- *   node bin/seqviz.mjs fixtures/Sequence_XML.xml --mode depth-2
- *   node bin/seqviz.mjs seq.xml --mode split --out docs/
- *   node bin/seqviz.mjs seq.xml --check       # exit 1 if the .mmd is stale
+ *   node bin/seqflow.mjs fixtures/Sequence_XML.xml --mode depth-2
+ *   node bin/seqflow.mjs seq.xml --mode split --out docs/
+ *   node bin/seqflow.mjs seq.xml --check       # exit 1 if the .mmd is stale
  *
  * All this file does is make `src/` importable, then hand over to `cli.mjs`.
  *

@@ -1,5 +1,5 @@
 /**
- * seqviz core types.
+ * seqflow core types.
  *
  * These types are the contract between the parser and everything downstream.
  * Nothing in this file may import from React or touch the DOM.
