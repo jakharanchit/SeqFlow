@@ -33,13 +33,12 @@ const collapsed = new Set(
 );
 
 describe('writing', () => {
-  const sidecar = toSidecar('Sequence_XML.xml', 'grouped', collapsed, placed);
+  const sidecar = toSidecar('Sequence_XML.xml', collapsed, placed);
   const text = serialiseSidecar(sidecar);
 
   test('every visible node gets a position', () => {
     expect(Object.keys(sidecar.positions).length).toBe(133);
     expect(sidecar.collapsed.length).toBe(collapsed.size);
-    expect(sidecar.mode).toBe('grouped');
     expect(sidecar.seqflow).toBe(SIDECAR_VERSION);
   });
 
@@ -49,7 +48,7 @@ describe('writing', () => {
   });
 
   test('keys are sorted, so two saves of one arrangement are the same bytes', () => {
-    const again = serialiseSidecar(toSidecar('Sequence_XML.xml', 'grouped', collapsed, placed));
+    const again = serialiseSidecar(toSidecar('Sequence_XML.xml', collapsed, placed));
     expect(again).toBe(text);
     const uids = Object.keys(sidecar.positions);
     expect(uids).toEqual([...uids].sort());
@@ -69,9 +68,8 @@ describe('writing', () => {
 
 describe('round trip', () => {
   test('save, parse, apply — every position comes back', () => {
-    const text = serialiseSidecar(toSidecar('Sequence_XML.xml', 'compact', collapsed, placed));
+    const text = serialiseSidecar(toSidecar('Sequence_XML.xml', collapsed, placed));
     const back = parseSidecar(text);
-    expect(back.mode).toBe('compact');
     expect(new Set(back.collapsed)).toEqual(collapsed);
 
     const applied = applySidecar(
@@ -91,7 +89,7 @@ describe('round trip', () => {
 
 describe('disagreement', () => {
   test('a uid the sequence no longer has is dropped and reported', () => {
-    const sidecar = toSidecar('Sequence_XML.xml', 'grouped', collapsed, placed);
+    const sidecar = toSidecar('Sequence_XML.xml', collapsed, placed);
     sidecar.positions['NOT-IN-THIS-FILE'] = [10, 20];
     sidecar.positions['ALSO-GONE'] = [30, 40];
 
@@ -102,7 +100,7 @@ describe('disagreement', () => {
   });
 
   test('a step with no saved position keeps the automatic one', () => {
-    const sidecar = toSidecar('Sequence_XML.xml', 'grouped', collapsed, placed);
+    const sidecar = toSidecar('Sequence_XML.xml', collapsed, placed);
     const orphan = placed[5]!;
     delete sidecar.positions[orphan.id];
 
@@ -118,7 +116,6 @@ describe('disagreement', () => {
     const foreign = {
       seqflow: SIDECAR_VERSION,
       file: 'Other.xml',
-      mode: 'grouped',
       collapsed: [],
       positions: { 'A-B-C': [1, 2] as [number, number] },
     };
@@ -156,9 +153,13 @@ describe('reading a hostile file', () => {
     expect(Object.keys(back.positions)).toEqual(['a', 'e']);
   });
 
-  test('an unknown mode falls back to grouped rather than to nothing', () => {
-    const back = parseSidecar(`{"seqflow":${SIDECAR_VERSION},"mode":"spiral","positions":{}}`);
-    expect(back.mode).toBe('grouped');
+  test('an old sidecar carrying a "mode" key is read without complaint', () => {
+    // Compact mode is gone; an old sidecar's leftover "mode" field is simply
+    // ignored rather than rejected, which is the same tolerance one bad
+    // "collapsed" entry or one bad position gets elsewhere in this file.
+    expect(() =>
+      parseSidecar(`{"seqflow":${SIDECAR_VERSION},"mode":"compact","positions":{}}`),
+    ).not.toThrow();
   });
 
   test('a non-string in collapsed is skipped', () => {

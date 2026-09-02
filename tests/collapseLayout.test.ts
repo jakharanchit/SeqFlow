@@ -31,7 +31,7 @@ async function layoutCollapsed(collapsed: Set<string>): Promise<Run> {
   const view = visibleGraph(graph, collapsed);
   const flow = toFlow(asGraph(graph, view), rules, { collapsedCounts: view.collapsedCounts });
   const started = Date.now();
-  const result = await elk.layout(toElk(flow.nodes, flow.edges, 'grouped'));
+  const result = await elk.layout(toElk(flow.nodes, flow.edges));
   const elapsed = Date.now() - started;
   const placed = applyLayout(flow.nodes, fromElk(result));
 

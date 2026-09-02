@@ -46,8 +46,7 @@ export interface ExportProps {
   routes: ReadonlyMap<string, Point[]>;
   /** True when something on the canvas is dimmed or lit right now. */
   highlighted: boolean;
-  /** The layout mode and collapsed set, for the sidecar. */
-  layoutMode: string;
+  /** The collapsed set, for the sidecar. */
   collapsed: ReadonlySet<string>;
   /**
    * The loaded revision diff, when there is one. The image export needs
@@ -75,7 +74,6 @@ export function Export({
   edges,
   routes,
   highlighted,
-  layoutMode,
   collapsed,
   diff,
 }: ExportProps): React.JSX.Element {
@@ -441,8 +439,7 @@ export function Export({
         ) : (
           <>
             <span className="stat">
-              <b>{nodes.length}</b> positions · <b>{collapsed.size}</b> collapsed ·{' '}
-              <b>{layoutMode}</b>
+              <b>{nodes.length}</b> positions · <b>{collapsed.size}</b> collapsed
             </span>
 
             <div className="spacer" />
@@ -453,7 +450,7 @@ export function Export({
               onClick={() =>
                 downloadText(
                   sidecarName(base),
-                  serialiseSidecar(toSidecar(fileName, layoutMode, collapsed, nodes)),
+                  serialiseSidecar(toSidecar(fileName, collapsed, nodes)),
                   'application/json',
                 )
               }
@@ -497,8 +494,8 @@ export function Export({
         <div className="export-layout">
           <p>
             Drag steps where you want them, then save. The sidecar records every
-            position, the layout mode and which sequences are folded — restoring an
-            arrangement with every sequence re-expanded would not be restoring it.
+            position and which sequences are folded — restoring an arrangement with
+            every sequence re-expanded would not be restoring it.
           </p>
           <p>
             <b>Drop the .layout.json back onto this page</b> to restore it. Load the

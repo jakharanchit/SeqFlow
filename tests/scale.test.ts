@@ -8,16 +8,15 @@
  *
  * Two jobs, and the split between them matters:
  *
- * - **A guard**, in `npm test`. One modest size, grouped layout only, generous
- *   ceilings. It is there to fail on an accidental quadratic, not to police a
- *   few milliseconds.
- * - **A report**, under `SEQVIZ_BENCH=1`. The full sweep, both layout modes,
- *   and it prints the table.
+ * - **A guard**, in `npm test`. One modest size, generous ceilings. It is
+ *   there to fail on an accidental quadratic, not to police a few
+ *   milliseconds.
+ * - **A report**, under `SEQVIZ_BENCH=1`. The full sweep, and it prints the
+ *   table.
  *
- * The sweep is not in the default run because it takes **ten minutes** —
- * compact layout at 5 000 leaves is minutes on its own. A test suite that slow
- * is a test suite nobody runs, which would cost far more than the coverage is
- * worth.
+ * The sweep is not in the default run because it takes real time at the
+ * largest size. A test suite that slow is a test suite nobody runs, which
+ * would cost far more than the coverage is worth.
  *
  * The numbers this produced are recorded in CLAUDE.md. They are what decided
  * which optimisations were worth having and which were not — and they are the
@@ -36,17 +35,12 @@ import { profile } from '../src/core/profile';
 import { signalIndex } from '../src/core/signals';
 import { similarGroups } from '../src/core/similarity';
 import { toFlow } from '../src/emit/flow';
-import { nodesForMode, toElk, type ElkLike } from '../src/layout/elkGraph';
+import { toElk, type ElkLike } from '../src/layout/elkGraph';
 import { generateSequence } from './generate';
 import { domParser, rules } from './helpers';
 
 const REPORT = process.env['SEQVIZ_BENCH'] === '1';
 
-/**
- * Above this, compact layout is not measured. See the note in `measure`: it is
- * not slow, it is unbounded, and it cannot be interrupted from here.
- */
-const COMPACT_CEILING = 500;
 const elk = new ELK() as ElkLike;
 
 interface Row {
@@ -62,7 +56,7 @@ function time<T>(fn: () => T): [T, number] {
   return [value, performance.now() - started];
 }
 
-async function measure(leaves: number, bothModes: boolean): Promise<Row> {
+async function measure(leaves: number): Promise<Row> {
   const { xml } = generateSequence({ leaves });
   const stages: Record<string, number> = {};
 
@@ -90,29 +84,9 @@ async function measure(leaves: number, bothModes: boolean): Promise<Row> {
   const [flow, flowMs] = time(() => toFlow(graph, rules));
   stages['toFlow'] = flowMs;
 
-  // Both layout modes. They are not close: compact drops the group boxes and
-  // asks ELK to wrap one long chain into columns, which on a graph where 250
-  // edges converge on a single node is a different problem entirely.
   const grouped = performance.now();
-  await elk.layout(toElk(nodesForMode(flow.nodes, 'grouped'), flow.edges, 'grouped'));
+  await elk.layout(toElk(flow.nodes, flow.edges));
   stages['elk grouped'] = performance.now() - grouped;
-
-  // Compact layout is measured only up to COMPACT_CEILING leaves.
-  //
-  // It cannot be bounded by a timeout here, and the reason is worth writing
-  // down: `elk.bundled.js` runs on the main thread in Node, so it blocks the
-  // event loop and a `Promise.race` against a timer can never fire. The app's
-  // `LAYOUT_TIMEOUT_MS` works *because* the app runs ELK in a web worker — the
-  // guard exists there and cannot exist here.
-  //
-  // Measured, compact took 60 s on a 295-node graph and had not finished after
-  // forty minutes at 5 000 leaves. That is the finding; waiting it out again on
-  // every sweep adds nothing.
-  if (bothModes && leaves <= COMPACT_CEILING) {
-    const compact = performance.now();
-    await elk.layout(toElk(nodesForMode(flow.nodes, 'compact'), flow.edges, 'compact'));
-    stages['elk compact'] = performance.now() - compact;
-  }
 
   expect(unreachable(graph, adj).size).toBe(0);
   expect(terminals(graph, adj).size).toBeGreaterThan(0);
@@ -123,7 +97,7 @@ async function measure(leaves: number, bothModes: boolean): Promise<Row> {
 // One size in the default run; the sweep only when asked for.
 const sizes = REPORT ? [500, 2000, 5000] : [500];
 const rows: Row[] = [];
-for (const n of sizes) rows.push(await measure(n, REPORT));
+for (const n of sizes) rows.push(await measure(n));
 
 describe('scale', () => {
   test('the generated graph is what it claims to be', () => {

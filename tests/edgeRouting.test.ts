@@ -49,7 +49,7 @@ async function layoutOf(xml: string): Promise<{
 }> {
   const graph = parse(xml, { rules, domParser });
   const flow = toFlow(graph, rules);
-  const result = await elk.layout(toElk(flow.nodes, flow.edges, 'grouped'));
+  const result = await elk.layout(toElk(flow.nodes, flow.edges));
   const placed = applyLayout(flow.nodes, fromElk(result));
 
   const byId = new Map(placed.map((n) => [n.id, n]));

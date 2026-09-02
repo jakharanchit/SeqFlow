@@ -38,7 +38,26 @@ export interface OutlineProps {
   available: ElementCount[];
   results: SearchResult[];
   searching: boolean;
+
+  /** How large the tree's rows render. Persisted by the caller. */
+  textSize: OutlineTextSize;
+  onTextSizeChange: (size: OutlineTextSize) => void;
 }
+
+/**
+ * Row font-size/height pairs, biggest lever a reader has over how much of the
+ * tree fits on screen at once. `row` also drives the windowing arithmetic
+ * below and is applied to the DOM as `--outline-row-height`, so this table is
+ * the one place both have to agree — there is no second copy to drift.
+ */
+export const OUTLINE_SIZES = [
+  { level: 'S', font: 11, row: 20 },
+  { level: 'M', font: 12, row: 22 },
+  { level: 'L', font: 14, row: 26 },
+  { level: 'XL', font: 16, row: 30 },
+] as const;
+
+export type OutlineTextSize = (typeof OUTLINE_SIZES)[number]['level'];
 
 interface Row {
   node: SeqNode;
@@ -107,13 +126,6 @@ function Marked({ name, at, length }: { name: string; at: number; length: number
 }
 
 /**
- * Row height in pixels. **Must match `.outline .row { height }` in styles.css** —
- * the windowing below places rows by arithmetic, not by measuring them, and a
- * disagreement shows up as rows drifting out of the scroll position.
- */
-const ROW_HEIGHT = 22;
-
-/**
  * Rows to render beyond the visible slice, above and below. Enough that a fast
  * scroll does not reach the edge before the next render lands.
  */
@@ -144,7 +156,17 @@ export function Outline({
   available,
   results,
   searching,
+  textSize,
+  onTextSizeChange,
 }: OutlineProps): React.JSX.Element {
+  const sizeIndex = OUTLINE_SIZES.findIndex((s) => s.level === textSize);
+  const size = OUTLINE_SIZES[sizeIndex < 0 ? 1 : sizeIndex]!;
+  const ROW_HEIGHT = size.row;
+  const rowStyle = {
+    '--outline-font-size': `${size.font}px`,
+    '--outline-row-height': `${size.row}px`,
+  } as React.CSSProperties;
+
   const rows = useMemo(
     () => (graph === null ? [] : rowsFor(graph, collapsed)),
     [graph, collapsed],
@@ -223,7 +245,7 @@ export function Outline({
 
   if (graph === null) {
     return (
-      <aside className="outline">
+      <aside className="outline" style={rowStyle}>
         <p className="hint">No file loaded.</p>
       </aside>
     );
@@ -238,9 +260,29 @@ export function Outline({
   };
 
   return (
-    <aside className="outline">
+    <aside className="outline" style={rowStyle}>
       <div className="outline-head">
         <span>Outline</span>
+        <div className="outline-textsize" role="group" aria-label="Tree text size">
+          <button
+            type="button"
+            disabled={sizeIndex <= 0}
+            onClick={() => onTextSizeChange(OUTLINE_SIZES[Math.max(0, sizeIndex - 1)]!.level)}
+            title="Smaller text"
+          >
+            A−
+          </button>
+          <button
+            type="button"
+            disabled={sizeIndex >= OUTLINE_SIZES.length - 1}
+            onClick={() =>
+              onTextSizeChange(OUTLINE_SIZES[Math.min(OUTLINE_SIZES.length - 1, sizeIndex + 1)]!.level)
+            }
+            title="Larger text"
+          >
+            A+
+          </button>
+        </div>
         <div className="outline-actions">
           <button type="button" onClick={onCollapseAll} title="Collapse every sequence">
             Collapse all

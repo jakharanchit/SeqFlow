@@ -4,34 +4,31 @@
  * elkjs is a GWT-compiled Java port at roughly 1.5 MB and takes a few hundred
  * ms on the sample file. Off the main thread, so the canvas never freezes.
  *
- * `?worker&inline` matters for NFR-2/NFR-3: the worker is emitted as an inline
- * blob rather than a separate asset, so the built page stays a single file and
- * works from file:// with no network.
+ * The worker script is pulled in with `?raw` — plain text, inlined into the
+ * bundle like `rules.yaml?raw` — and turned into a `Worker` by hand via
+ * `createElkWorker` below, rather than via Vite's `?worker&inline`. That
+ * matters for NFR-2/NFR-3 in a way `?worker&inline` itself does not deliver:
+ * this plugin version emits `?worker&inline` as `new Worker("data:...")`, and
+ * Chromium refuses to run a `data:` URL as a *top-level worker script* under
+ * a `file://` origin — "Refused to cross-origin redirects of the top-level
+ * worker script." A blob: URL, built from the same inlined source, is not
+ * subject to that restriction and is exactly what every download in
+ * `ui/download.ts`/`ui/raster.ts` already relies on working from file://.
  */
 
 import ELK from 'elkjs/lib/elk-api';
-// eslint-disable-next-line import/no-unresolved -- Vite worker import
-import ElkWorker from 'elkjs/lib/elk-worker.min.js?worker&inline';
+import elkWorkerSource from 'elkjs/lib/elk-worker.min.js?raw';
 
 import type { FlowEdge, FlowNode } from '../emit/flow';
-import {
-  applyLayout,
-  edgeRoutes,
-  fromElk,
-  nodesForMode,
-  toElk,
-  type ElkLike,
-  type LayoutMode,
-  type Point,
-} from './elkGraph';
+import { applyLayout, edgeRoutes, fromElk, toElk, type ElkLike, type Point } from './elkGraph';
 
 /**
  * How long a single layout may take before it is abandoned.
  *
- * ELK's cost is not a function of node count alone. Measured: a 2 295-node
- * sequence folded to 295 visible nodes lays out grouped in 4 s and **compact in
- * 60 s** — the wrapping strategy meets a node with hundreds of inbound edges
- * and the shape of the problem changes entirely.
+ * ELK's cost is not a function of node count alone — a hierarchical, grouped
+ * layout was measured at 4 s for a 2 295-node sequence folded to 295 visible
+ * nodes, but a node with hundreds of inbound edges can change the shape of
+ * the problem entirely.
  *
  * Node count can therefore be budgeted for (see `autoCollapse`) but not relied
  * on, and the corpus is a database nobody here has read. A wall-clock ceiling
@@ -45,10 +42,25 @@ export class LayoutTimeout extends Error {
   constructor(seconds: number) {
     super(
       `layout gave up after ${seconds} s. This graph is too tangled to arrange ` +
-        'at this size — fold some sequences in the outline, or stay in Grouped mode',
+        'at this size — fold some sequences in the outline',
     );
     this.name = 'LayoutTimeout';
   }
+}
+
+/**
+ * A `blob:` URL only has to live long enough for `new Worker` to read it — the
+ * same margin `downloadText`/`downloadBlob` give a click before revoking
+ * their own object URLs, and for the same reason: revoking immediately races
+ * the read in some browsers, and a worker's script is fetched no faster than
+ * a download's click is handled.
+ */
+function createElkWorker(): Worker {
+  const blob = new Blob([elkWorkerSource], { type: 'text/javascript' });
+  const url = URL.createObjectURL(blob);
+  const worker = new Worker(url);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+  return worker;
 }
 
 let instance: ElkLike | null = null;
@@ -56,7 +68,7 @@ let instance: ElkLike | null = null;
 function elk(): ElkLike {
   if (instance === null) {
     instance = new ELK({
-      workerFactory: () => new ElkWorker(),
+      workerFactory: () => createElkWorker(),
     }) as unknown as ElkLike;
   }
   return instance;
@@ -81,9 +93,7 @@ export interface LayoutResult {
 export async function layout(
   nodes: readonly FlowNode[],
   edges: readonly FlowEdge[],
-  mode: LayoutMode = 'grouped',
 ): Promise<LayoutResult> {
-  const subject = nodesForMode(nodes, mode);
   const started = performance.now();
 
   // The worker cannot be interrupted, so this does not stop ELK — it stops the
@@ -91,7 +101,7 @@ export async function layout(
   // which is a great deal better than a canvas that never comes back.
   let timer = 0;
   const result = await Promise.race([
-    elk().layout(toElk(subject, edges, mode)),
+    elk().layout(toElk(nodes, edges)),
     new Promise<never>((_resolve, reject) => {
       timer = setTimeout(
         () => reject(new LayoutTimeout(Math.round(LAYOUT_TIMEOUT_MS / 1000))),
@@ -101,7 +111,7 @@ export async function layout(
   ]).finally(() => clearTimeout(timer));
 
   return {
-    nodes: applyLayout(subject, fromElk(result)),
+    nodes: applyLayout(nodes, fromElk(result)),
     routes: edgeRoutes(result),
     elapsedMs: Math.round(performance.now() - started),
   };

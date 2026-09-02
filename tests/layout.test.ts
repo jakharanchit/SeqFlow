@@ -17,7 +17,6 @@ import {
   fitZoom,
   fromElk,
   graphBounds,
-  nodesForMode,
   toElk,
   type ElkLike,
 } from '../src/layout/elkGraph';
@@ -123,34 +122,6 @@ describe('ELK layout', () => {
     const horizontallyClear = abort.x >= main.x + mainBox.width || abort.x + byId.get(abortSeq.uid)!.width <= main.x;
     const verticallyClear = abort.y >= main.y + mainBox.height;
     expect(horizontallyClear || verticallyClear).toBe(true);
-  });
-});
-
-describe('compact layout mode', () => {
-  it('wraps the chain into a readable aspect ratio', async () => {
-    // Task 7 asks that the Cycle blocks not read as one long chain. They are
-    // genuinely sequential, so `grouped` stacks them; `compact` wraps the same
-    // chain into columns without changing a single edge.
-    const flat = nodesForMode(flow.nodes, 'compact');
-    const compact = await elk.layout(toElk(flat, flow.edges, 'compact'));
-
-    const tall = (result.height ?? 0) / (result.width ?? 1);
-    const wide = (compact.height ?? 0) / (compact.width ?? 1);
-    expect(tall).toBeGreaterThan(4); // grouped: one long column
-    expect(wide).toBeLessThan(1.5); // compact: columns side by side
-  });
-
-  it('keeps every leaf and drops the group boxes', () => {
-    const flat = nodesForMode(flow.nodes, 'compact');
-    expect(flat).toHaveLength(107);
-    expect(flat.every((n) => n.parentId === undefined)).toBe(true);
-    expect(flat.some((n) => n.type === 'seqGroup')).toBe(false);
-  });
-
-  it('lays the same edges out in both modes', () => {
-    const flat = nodesForMode(flow.nodes, 'compact');
-    const req = toElk(flat, flow.edges, 'compact');
-    expect(req.edges).toHaveLength(126);
   });
 });
 

@@ -1,17 +1,20 @@
 /**
- * Bottom drawer — spec 7.1. Nine tabs in three clusters.
+ * Settings panel — a right-side overlay, opened from the gear button.
  *
- * Everything here is a question about the whole file rather than about the
- * selected node, which is why it sits under the canvas rather than in the
- * inspector. That was the only rule for a while, and it does not tell a reader
- * where to look. The clusters do, and a new tab goes in whichever one answers
- * its question:
+ * This used to be a bottom-docked drawer (spec 7.1); an embedded LabVIEW panel
+ * has no room for a permanent header and footer, so every one of these tabs
+ * is now on-demand rather than a strip of chrome that is always there. The
+ * tab-switching logic and each tab's body are otherwise unchanged — only the
+ * shell around them moved (see `styles.css`'s `.drawer` rules).
  *
+ * Ten tabs in four clusters:
+ *
+ *   view      —                              the app's own controls and stats
  *   contents  Signals · Criteria · Repeats    what is in this file
  *   health    Warnings · Findings · Schema    what is wrong with it
  *   analysis  Timing · Diff                   what it will do, and what changed
  *
- * Export is pinned right, away from all three: it is not a question about the
+ * Export is pinned right, away from all four: it is not a question about the
  * file, it is a way out of the tool.
  *
  * **Findings and warnings are two tabs and stay two tabs.** A warning means the
@@ -50,10 +53,12 @@ import { Criteria } from './Criteria';
 import { Diff } from './Diff';
 import { Export } from './Export';
 import { Findings } from './Findings';
+import { CanvasHelp } from './Inspector';
 import { Schema } from './Schema';
 import { Timing } from './Timing';
 
 export type DrawerTab =
+  | 'view'
   | 'signals'
   | 'criteria'
   | 'timing'
@@ -64,9 +69,27 @@ export type DrawerTab =
   | 'diff'
   | 'export';
 
+/** The app-level controls and live stats that used to live in the toolbar
+ * header — relocated here now that the header is gone. */
+export interface ViewInfo {
+  visibleCount: number;
+  totalCount: number;
+  edgeCount: number;
+  elapsedMs: number;
+  /** Sequences the tool folded on load, before the reader touched anything. */
+  autoFolded: number;
+  /** A one-line diff summary, when a baseline is loaded. */
+  diffSummary: string | null;
+  trace: boolean;
+  onTrace: () => void;
+  onRelayout: () => void;
+  busy: boolean;
+}
+
 export interface DrawerProps {
   graph: Graph | null;
   rules: Rules;
+  view: ViewInfo;
   /** The loaded file name. Names every export. */
   fileName: string;
   /**
@@ -84,7 +107,6 @@ export interface DrawerProps {
   routes: ReadonlyMap<string, Point[]>;
   /** True when something on the canvas is dimmed or lit right now. */
   highlighted: boolean;
-  layoutMode: string;
   collapsed: ReadonlySet<string>;
   index: SignalIndex;
   rows: SignalRow[];
@@ -134,15 +156,6 @@ export interface DrawerProps {
   onSignal: (signal: string | null) => void;
   onSelect: (uid: string) => void;
 }
-
-/** Tabs that need more room than a signal list. */
-const TALL: ReadonlySet<DrawerTab> = new Set<DrawerTab>([
-  'export',
-  'timing',
-  'findings',
-  'diff',
-  'schema',
-]);
 
 interface TabProps {
   id: DrawerTab;
@@ -198,6 +211,7 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
   const {
     graph,
     rules,
+    view,
     fileName,
     signalNames,
     signalNamesFile,
@@ -206,7 +220,6 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
     edges,
     routes,
     highlighted,
-    layoutMode,
     collapsed,
     index,
     rows,
@@ -263,8 +276,15 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
   const shared = { tab, open, onTab, onOpen };
 
   return (
-    <div className={`drawer${open ? ' open' : ''}${open && TALL.has(tab) ? ' tall' : ''}`}>
+    <div className={`drawer${open ? ' open' : ''}`}>
       <div className="drawer-tabs">
+        {/* View — the app's own controls and stats, relocated from the old
+            toolbar header now that the header is gone. */}
+        <span className="tab-group" aria-hidden="true">
+          view
+        </span>
+        <Tab {...shared} id="view" label="View" />
+
         {/* Contents — what is in this file. */}
         <span className="tab-group" aria-hidden="true">
           contents
@@ -348,7 +368,72 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
 
       {open && (
         <div className="drawer-body">
-          {tab === 'signals' ? (
+          {tab === 'view' ? (
+            <div className="drawer-list wide">
+              <div className="section">
+                <h3>This file</h3>
+                <table className="attrs">
+                  <tbody>
+                    <tr>
+                      <td className="k">nodes</td>
+                      <td className="v">
+                        {view.visibleCount}
+                        {view.visibleCount === view.totalCount ? '' : ` / ${view.totalCount}`}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="k">edges</td>
+                      <td className="v">{view.edgeCount}</td>
+                    </tr>
+                    <tr>
+                      <td className="k">layout time</td>
+                      <td className="v">{view.elapsedMs} ms</td>
+                    </tr>
+                    {view.autoFolded > 0 && (
+                      <tr>
+                        <td className="k">opened folded</td>
+                        <td className="v">
+                          {view.autoFolded} sequences — laying out every node at once takes
+                          seconds on a file this size. Expand all in the outline to see the whole
+                          thing.
+                        </td>
+                      </tr>
+                    )}
+                    {view.diffSummary !== null && (
+                      <tr>
+                        <td className="k">diff</td>
+                        <td className="v">{view.diffSummary}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="section">
+                <h3>Canvas controls</h3>
+                <button
+                  type="button"
+                  className={`tool${view.trace ? ' on' : ''}`}
+                  aria-pressed={view.trace}
+                  onClick={view.onTrace}
+                  title="Colour what runs before the selected step and what runs after it, dimming the rest"
+                >
+                  Trace paths
+                </button>
+                <button
+                  type="button"
+                  className="tool"
+                  disabled={view.busy}
+                  onClick={view.onRelayout}
+                  title="Discard manual positions and restore the automatic layout"
+                >
+                  {view.busy ? 'Laying out…' : 'Re-layout'}
+                </button>
+              </div>
+
+              <CanvasHelp graph={graph} />
+            </div>
+          ) : tab === 'signals' ? (
             <>
               <div className="drawer-list">
                 <div className="signal-names-note">
@@ -578,7 +663,6 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
               edges={edges}
               routes={routes}
               highlighted={highlighted}
-              layoutMode={layoutMode}
               collapsed={collapsed}
               diff={diff}
             />

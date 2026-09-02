@@ -50,12 +50,18 @@ import {
   type Sidecar,
 } from './emit/sidecar';
 import { toFlow, type FlowEdge, type FlowNode } from './emit/flow';
+import { toMermaid } from './emit/mermaid';
+import { toSvg } from './emit/svg';
 import { LayoutTimeout, layout, type LayoutResult } from './layout/elk';
-import type { LayoutMode, Point } from './layout/elkGraph';
+import type { Point } from './layout/elkGraph';
+import { blobToBase64, installBridge, type InstalledBridge } from './bridge/install';
+import type { ExecStatus, StepStatusPayload } from './bridge/protocol';
+import { svgToPng } from './ui/raster';
 import { Canvas, type FocusRequest } from './ui/Canvas';
 import { Drawer, type DrawerTab } from './ui/Drawer';
-import { Inspector } from './ui/Inspector';
-import { Outline } from './ui/Outline';
+import { StepDetails } from './ui/Inspector';
+import { Outline, type OutlineTextSize } from './ui/Outline';
+import { usePersistedState, useResizable } from './ui/useResizable';
 import './ui/styles.css';
 
 /**
@@ -122,6 +128,16 @@ const EMPTY_COUNTS = {
   EXTERNAL_CRITERIA: 0,
 } as const;
 
+/** Highest-attention execution status wins when lifting several onto one
+ * folded sequence node — see `execLight` below. */
+const EXEC_PRIORITY: Record<ExecStatus, number> = {
+  fail: 4,
+  running: 3,
+  pending: 2,
+  pass: 1,
+  skipped: 0,
+};
+
 const EMPTY_DURATION: DurationReport = {
   timed: false,
   waitAttrs: [],
@@ -168,14 +184,13 @@ export function App(): React.JSX.Element {
   const [routes, setRoutes] = useState<ReadonlyMap<string, Point[]>>(new Map());
   /**
    * A loaded layout sidecar, waiting for the next layout to land. Positions
-   * cannot be applied on arrival: loading one usually changes the mode and the
-   * collapsed set, and that starts a fresh ELK pass that would overwrite them.
+   * cannot be applied on arrival: loading one usually changes the collapsed
+   * set, and that starts a fresh ELK pass that would overwrite them.
    */
   const [sidecar, setSidecar] = useState<Sidecar | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
-  const [mode, setMode] = useState<LayoutMode>('grouped');
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<Warning[]>([]);
   const [dismissed, setDismissed] = useState(false);
@@ -192,8 +207,8 @@ export function App(): React.JSX.Element {
   const [text, setText] = useState('');
   const [elements, setElements] = useState<ReadonlySet<string>>(NO_COLLAPSE);
   const [trace, setTrace] = useState(true);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerTab, setDrawerTab] = useState<DrawerTab>('signals');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<DrawerTab>('view');
   const [signal, setSignal] = useState<string | null>(null);
   const [repeat, setRepeat] = useState(0);
   /* Phase 4. */
@@ -210,6 +225,48 @@ export function App(): React.JSX.Element {
    */
   const [signalNames, setSignalNames] = useState<SignalNameFile>(noSignalNames);
   const [signalNamesFile, setSignalNamesFile] = useState<string | null>(null);
+  /**
+   * Live per-step execution status, pushed in over the LabVIEW bridge as a
+   * test runs — see `bridge/install.ts`. Empty until something calls
+   * `setStepStatus`/`setStepStatuses`; a plain browser session never touches
+   * it. Kept apart from `highlight`/`diff` for the same reason those are kept
+   * apart from each other: "this step is running" and "this step is on the
+   * traced path" can both be true and both need to stay visible.
+   */
+  const [executionStatus, setExecutionStatus] = useState<ReadonlyMap<string, ExecStatus>>(
+    new Map(),
+  );
+
+  /* ---------------------------------------------------------------- */
+  /* LabVIEW-embedded shell: panel sizing, text size, flowchart toggle   */
+  /* ---------------------------------------------------------------- */
+
+  /** The left panel's width. Max shrinks the canvas can never fully starve. */
+  const outlinePanel = useResizable(
+    'seqflow.outlineWidth',
+    320,
+    180,
+    Math.min(720, window.innerWidth * 0.7),
+    'horizontal',
+  );
+  /**
+   * The split between the tree and the step-details section beneath it.
+   * `invert: true` because the details section sits *after* its handle
+   * (below it) — dragging the handle down should shrink it, the opposite of
+   * the outline panel's handle, which sits before the panel it resizes.
+   */
+  const detailsPanel = useResizable('seqflow.detailsHeight', 220, 80, 560, 'vertical', true);
+  const [outlineTextSize, setOutlineTextSize] = usePersistedState<OutlineTextSize>(
+    'seqflow.outlineTextSize',
+    'M',
+    (raw) => (raw === 'S' || raw === 'M' || raw === 'L' || raw === 'XL' ? raw : 'M'),
+  );
+  const [flowchartVisible, setFlowchartVisible] = usePersistedState<boolean>(
+    'seqflow.flowchartVisible',
+    true,
+    (raw) => raw === 'true',
+    (v) => String(v),
+  );
 
   // Guards against a slow layout from an earlier file or toggle landing after
   // a newer one.
@@ -226,18 +283,31 @@ export function App(): React.JSX.Element {
    */
   const sourceRef = useRef<{ xml: string; fileName: string } | null>(null);
   /**
-   * The last layout mode that actually finished. A mode that times out is
-   * reverted to this one, so the toolbar never claims a view the canvas is not
-   * showing.
-   */
-  const goodMode = useRef<LayoutMode>('grouped');
-  /**
    * The rule set, readable from `load` without putting it in the dependency
    * list. `load` is the page-wide drop handler's only dependency and rebuilding
    * it on every rule change would re-register the listener for no reason.
    */
   const ruleSetRef = useRef(ruleSet);
   ruleSetRef.current = ruleSet;
+  /**
+   * The LabVIEW bridge's read side. `installBridge` runs once, from a mount
+   * effect below, with handlers built from `useCallback(..., [])` — stable
+   * for the component's whole life, so the effect never re-registers
+   * `window.SeqFlowBridge`. Those handlers see the *current* canvas and graph
+   * anyway because they read through these refs rather than closing over
+   * render-time values; each is updated every render, same as `graphRef` and
+   * `edgesRef` above.
+   */
+  const renderNodesRef = useRef<readonly FlowNode[]>([]);
+  const renderEdgesRef = useRef<readonly FlowEdge[]>([]);
+  const routesRef = useRef<ReadonlyMap<string, Point[]>>(new Map());
+  const selectedRef = useRef<string | null>(null);
+  const loadedRef = useRef<Loaded | null>(null);
+  const warningsRef = useRef<Warning[]>([]);
+  /** `reveal` closes over `graph`, so it is not stable — read through a ref. */
+  const revealRef = useRef<(uid: string) => void>(() => {});
+  /** Set once the mount effect below has installed the bridge. */
+  const bridgeRef = useRef<InstalledBridge | null>(null);
 
   /**
    * The file as parsed: what every analysis panel is about. When a baseline is
@@ -412,10 +482,9 @@ export function App(): React.JSX.Element {
   /**
    * ELK results for this file, keyed by what determines one.
    *
-   * A collapse toggle and a Grouped/Compact flip each cost a full ELK pass —
-   * 10.7 s on a 5 733-node graph — including re-opening a fold that was closed
-   * a second ago. ELK is deterministic, so the second pass can only produce
-   * what the first one did.
+   * A collapse toggle costs a full ELK pass — 10.7 s on a 5 733-node graph —
+   * including re-opening a fold that was closed a second ago. ELK is
+   * deterministic, so the second pass can only produce what the first one did.
    *
    * A fresh Map per graph, built during render rather than in an effect, so the
    * layout effect below can never read a cache belonging to the previous file.
@@ -427,8 +496,8 @@ export function App(): React.JSX.Element {
   );
 
   /**
-   * Layout runs whenever the visible graph or the mode changes — a collapse
-   * toggle produces a different graph, so it needs a fresh arrangement.
+   * Layout runs whenever the visible graph changes — a collapse toggle
+   * produces a different graph, so it needs a fresh arrangement.
    */
   useEffect(() => {
     if (graph === null || view === null) {
@@ -441,8 +510,8 @@ export function App(): React.JSX.Element {
     setBusy(true);
 
     // Everything that determines an arrangement. The Map is already per graph
-    // and per rule file, so only the fold state and the mode go in the key.
-    const key = `${mode}|${[...collapsed].sort().join(',')}`;
+    // and per rule file, so only the fold state goes in the key.
+    const key = [...collapsed].sort().join(',');
     const cached = layoutCache.get(key);
 
     // Always built: `toFlow` is 14 ms on a 5 733-node graph against ELK's
@@ -454,7 +523,7 @@ export function App(): React.JSX.Element {
 
     const pass: Promise<LayoutResult> =
       cached === undefined
-        ? layout(flow.nodes, flow.edges, mode)
+        ? layout(flow.nodes, flow.edges)
         : // Positions are handed to React Flow, which replaces node objects as
           // they are dragged. Copy them so a cached arrangement cannot be
           // edited by the session that used it.
@@ -492,8 +561,8 @@ export function App(): React.JSX.Element {
                 message: `layout file: ${restored.unknown.length} saved position${restored.unknown.length === 1 ? ' is' : 's are'} for steps this sequence no longer has, and ${restored.unknown.length === 1 ? 'was' : 'were'} dropped. ${restored.placed} restored.`,
               },
             ]);
-            setDrawerTab('warnings');
-            setDrawerOpen(true);
+            setSettingsTab('warnings');
+            setSettingsOpen(true);
           }
           setSidecar(null);
         }
@@ -502,7 +571,6 @@ export function App(): React.JSX.Element {
         setRoutes(placed.routes);
         setElapsedMs(placed.elapsedMs);
         setLayoutKey((k) => k + 1);
-        goodMode.current = mode;
       })
       .catch((err: unknown) => {
         if (ticket !== run.current) return;
@@ -512,17 +580,13 @@ export function App(): React.JSX.Element {
             : `layout failed — ${(err as Error).message}`,
         );
         setDismissed(false);
-        // Keep the arrangement already on screen and put the toolbar back in
-        // step with it. Reverting re-runs the effect, which hits the cache for
-        // the mode that worked and lands immediately.
-        if (err instanceof LayoutTimeout && mode !== goodMode.current) {
-          setMode(goodMode.current);
-        }
+        // Keep the arrangement already on screen — a timed-out layout leaves
+        // the canvas showing whatever it had before.
       })
       .finally(() => {
         if (ticket === run.current) setBusy(false);
       });
-  }, [graph, view, collapsed, mode, sidecar, pass, layoutCache, ruleSet.rules]);
+  }, [graph, view, collapsed, sidecar, pass, layoutCache, ruleSet.rules]);
 
   /**
    * Parse and show a sequence. `withRules` lets a newly dropped rule file
@@ -563,11 +627,15 @@ export function App(): React.JSX.Element {
       // A baseline is a comparison against *this* file. Loading a different
       // one leaves it comparing two files the reader never asked about.
       setBaseline(null);
+      // A running status belongs to a test run against *this* file. A new
+      // load — even a re-drop of the same file — has to be read as "nothing
+      // has run yet", not as the previous run's steps still lit.
+      setExecutionStatus(new Map());
       // A warning has to be seen. The drawer opens itself rather than relying
       // on a banner the reader can dismiss and never look at again.
       if (parsed.warnings.length > 0) {
-        setDrawerTab('warnings');
-        setDrawerOpen(true);
+        setSettingsTab('warnings');
+        setSettingsOpen(true);
       }
     } catch (err) {
       const message =
@@ -611,8 +679,8 @@ export function App(): React.JSX.Element {
     const source = sourceRef.current;
     if (source === null) {
       setError(null);
-      setDrawerTab('schema');
-      setDrawerOpen(true);
+      setSettingsTab('schema');
+      setSettingsOpen(true);
       return;
     }
     load(source.xml, source.fileName, next);
@@ -625,8 +693,8 @@ export function App(): React.JSX.Element {
   }, [load]);
 
   /**
-   * A layout sidecar — spec 7.8. The mode and the collapsed set land now; the
-   * positions wait for the layout pass those two changes are about to start.
+   * A layout sidecar — spec 7.8. The collapsed set lands now; the positions
+   * wait for the layout pass that change is about to start.
    */
   const loadLayout = useCallback(
     (text: string, fileName: string): void => {
@@ -637,7 +705,6 @@ export function App(): React.JSX.Element {
       }
       try {
         const parsed = parseSidecar(text);
-        setMode(parsed.mode === 'compact' ? 'compact' : 'grouped');
         setCollapsed(new Set(parsed.collapsed));
         setSidecar(parsed);
         setError(null);
@@ -696,8 +763,8 @@ export function App(): React.JSX.Element {
     setSignalNames(parsed);
     setSignalNamesFile(name);
     setError(null);
-    setDrawerTab('signals');
-    setDrawerOpen(true);
+    setSettingsTab('signals');
+    setSettingsOpen(true);
   }, []);
 
   const clearSignalNames = useCallback((): void => {
@@ -771,6 +838,7 @@ export function App(): React.JSX.Element {
     },
     [graph],
   );
+  revealRef.current = reveal;
 
   const toggle = useCallback((uid: string): void => {
     setCollapsed((current) => {
@@ -827,6 +895,148 @@ export function App(): React.JSX.Element {
       return dropped ? next : current;
     });
   }, []);
+
+  /* ---------------------------------------------------------------- */
+  /* LabVIEW bridge                                                     */
+  /* ---------------------------------------------------------------- */
+
+  /** `selectStep` — reuses `reveal`, which already selects, expands whatever
+   * collapsed sequence is hiding the step, and centres the viewport on it. */
+  const bridgeSelectStep = useCallback((uid: string): void => {
+    revealRef.current(uid);
+  }, []);
+
+  const bridgeSetStepStatus = useCallback((uid: string, status: ExecStatus): void => {
+    setExecutionStatus((current) => {
+      const next = new Map(current);
+      next.set(uid, status);
+      return next;
+    });
+  }, []);
+
+  const bridgeSetStepStatuses = useCallback(
+    (entries: readonly StepStatusPayload[]): void => {
+      if (entries.length === 0) return;
+      setExecutionStatus((current) => {
+        const next = new Map(current);
+        for (const { uid, status } of entries) next.set(uid, status);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const bridgeResetExecution = useCallback((): void => {
+    setExecutionStatus(new Map());
+  }, []);
+
+  const bridgeExportMermaid = useCallback((): string => {
+    const g = graphRef.current;
+    return g === null ? '' : toMermaid(g, ruleSetRef.current.rules);
+  }, []);
+
+  /** Honours whatever is dimmed/highlighted on the canvas right now, the same
+   * default `Export.tsx`'s "Match canvas" starts on. */
+  const bridgeExportSvg = useCallback((): string => {
+    const loaded = loadedRef.current;
+    return toSvg(renderNodesRef.current, renderEdgesRef.current, {
+      routes: routesRef.current,
+      highlight: true,
+      ...(loaded === null ? {} : { title: loaded.fileName }),
+    }).text;
+  }, []);
+
+  const bridgeExportPng = useCallback(async () => {
+    const loaded = loadedRef.current;
+    const svg = toSvg(renderNodesRef.current, renderEdgesRef.current, {
+      routes: routesRef.current,
+      highlight: true,
+      ...(loaded === null ? {} : { title: loaded.fileName }),
+    });
+    const raster = await svgToPng(svg.text, svg.width, svg.height, 1);
+    const base64 = await blobToBase64(raster.blob);
+    return { base64, width: raster.width, height: raster.height };
+  }, []);
+
+  const bridgeGetState = useCallback(
+    (): Record<string, unknown> => ({
+      fileName: loadedRef.current?.fileName ?? null,
+      nodeCount: graphRef.current?.nodes.size ?? 0,
+      warnings: warningsRef.current.length,
+      selected: selectedRef.current,
+    }),
+    [],
+  );
+
+  /**
+   * Installed once. Every handler above reads through a ref rather than
+   * closing over render-time state, so `[]` here — mirroring the load*
+   * functions' own stable identities — is not a lie: the bridge sees the
+   * current graph and canvas on every call regardless of when it was
+   * installed. Mirrors the page-wide drop-listener effect just above it.
+   */
+  useEffect(() => {
+    const installed = installBridge({
+      loadXml: load,
+      loadRuleFile,
+      loadSignalNames,
+      loadLayout,
+      loadBaseline,
+      clearRuleFile,
+      clearSignalNames,
+      clearBaseline,
+      selectStep: bridgeSelectStep,
+      setStepStatus: bridgeSetStepStatus,
+      setStepStatuses: bridgeSetStepStatuses,
+      resetExecution: bridgeResetExecution,
+      exportMermaid: bridgeExportMermaid,
+      exportSvg: bridgeExportSvg,
+      exportPng: bridgeExportPng,
+      getState: bridgeGetState,
+    });
+    bridgeRef.current = installed;
+    return () => {
+      installed.dispose();
+      bridgeRef.current = null;
+    };
+  }, [
+    load,
+    loadRuleFile,
+    loadSignalNames,
+    loadLayout,
+    loadBaseline,
+    clearRuleFile,
+    clearSignalNames,
+    clearBaseline,
+    bridgeSelectStep,
+    bridgeSetStepStatus,
+    bridgeSetStepStatuses,
+    bridgeResetExecution,
+    bridgeExportMermaid,
+    bridgeExportSvg,
+    bridgeExportPng,
+    bridgeGetState,
+  ]);
+
+  /** Pushed out whenever the reader (or LabVIEW's own `selectStep`) changes
+   * the selection — LabVIEW polls these to know what an operator clicked. */
+  useEffect(() => {
+    bridgeRef.current?.enqueue('stepSelected', { uid: selected });
+  }, [selected]);
+
+  useEffect(() => {
+    if (loaded === null) return;
+    bridgeRef.current?.enqueue('fileLoaded', {
+      fileName: loaded.fileName,
+      nodeCount: loaded.graph.nodes.size,
+      warnings: loaded.graph.warnings.length,
+    });
+  }, [loaded]);
+
+  useEffect(() => {
+    if (error === null) return;
+    bridgeRef.current?.enqueue('loadError', { message: error });
+  }, [error]);
 
   /**
    * Path highlighting — spec 7.3. Computed on the *full* graph and then lifted
@@ -912,6 +1122,31 @@ export function App(): React.JSX.Element {
     };
   }, [view, abortRoutes, failRoutes]);
 
+  /**
+   * Live execution status, lifted through the collapse view the same way
+   * every other overlay is — a status reported for a step hidden inside a
+   * folded sequence has to land *somewhere* visible, or folding a sequence
+   * while a test runs would go dark for it.
+   *
+   * A folded sequence can stand in for several statuses at once (steps at
+   * different stages inside it), so lifting takes the most attention-worthy
+   * one rather than the last one written: a single `fail` inside a folded
+   * group must not be overwritten by nine `pass`es that happen to be later in
+   * iteration order.
+   */
+  const execLight = useMemo(() => {
+    if (view === null || executionStatus.size === 0) return null;
+    const lifted = new Map<string, ExecStatus>();
+    for (const [uid, status] of executionStatus) {
+      const target = view.lifted.get(uid) ?? uid;
+      const current = lifted.get(target);
+      if (current === undefined || EXEC_PRIORITY[status] > EXEC_PRIORITY[current]) {
+        lifted.set(target, status);
+      }
+    }
+    return lifted;
+  }, [view, executionStatus]);
+
   /* Selection is app state; React Flow is told about it rather than owning it. */
   const renderNodes = useMemo(
     () =>
@@ -948,11 +1183,16 @@ export function App(): React.JSX.Element {
         // Diff classes are not a highlight: they say what happened to the step,
         // and a dimmed ghost is still a ghost. Both may apply at once.
         const change = diff === null ? undefined : diff.status.get(n.id);
+        // Execution status is not a highlight either — it says what LabVIEW
+        // reported for the step, independent of whether it is dimmed, on a
+        // traced path, or a diff ghost. All three can be true together.
+        const exec = isGroup ? undefined : execLight?.get(n.id);
         const className = [
           dim ? 'dimmed' : '',
           onPath ? 'on-path' : '',
           direction,
           change === undefined || change === 'same' ? '' : `diff-${change}`,
+          exec === undefined ? '' : `exec-${exec}`,
         ]
           .filter(Boolean)
           .join(' ');
@@ -960,7 +1200,7 @@ export function App(): React.JSX.Element {
         if (n.selected === isSelected && (n.className ?? '') === className) return n;
         return { ...n, selected: isSelected, className };
       }),
-    [nodes, selected, matches, spotlight, criterionLight, failLight, highlight, diff],
+    [nodes, selected, matches, spotlight, criterionLight, failLight, highlight, diff, execLight],
   );
 
   const renderEdges = useMemo(
@@ -1031,102 +1271,33 @@ export function App(): React.JSX.Element {
   }, [loaded, baseline]);
 
   edgesRef.current = edges;
+  renderNodesRef.current = renderNodes;
+  renderEdgesRef.current = renderEdges;
+  routesRef.current = routes;
+  selectedRef.current = selected;
+  loadedRef.current = loaded;
+  warningsRef.current = warnings;
 
   const showBanner = !dismissed && error !== null;
   const visibleCount = view?.nodes.size ?? 0;
 
+  /** The toolbar/header controls, relocated into the settings panel's View
+   * tab now that there is no header — see `Drawer.tsx`'s `ViewInfo`. */
+  const viewInfo = {
+    visibleCount,
+    totalCount: graph?.nodes.size ?? 0,
+    edgeCount: edges.length,
+    elapsedMs,
+    autoFolded,
+    diffSummary: diff === null ? null : summarise(diff),
+    trace,
+    onTrace: () => setTrace((t) => !t),
+    onRelayout: relayout,
+    busy,
+  };
+
   return (
     <div className={`app${dragging ? ' dragging' : ''}`}>
-      <header className="toolbar">
-        <div className="brand">
-          seqflow<span>{loaded?.fileName ?? 'no file loaded'}</span>
-        </div>
-        <div className="spacer" />
-
-        {graph !== null && (
-          <div className="stat">
-            <b>{visibleCount}</b>
-            {visibleCount === graph.nodes.size ? '' : ` / ${graph.nodes.size}`} nodes ·{' '}
-            <b>{edges.length}</b> edges · <b>{elapsedMs}</b> ms
-            {autoFolded > 0 && (
-              <>
-                {' · '}
-                <span
-                  className="auto-folded"
-                  title="Laying out every node at once takes ten seconds on a file this size. Expand all in the outline to see the whole thing."
-                >
-                  opened folded ({autoFolded} sequences)
-                </span>
-              </>
-            )}
-            {diff !== null && (
-              <>
-                {' · '}
-                <b className="diff-stat">{summarise(diff)}</b>
-              </>
-            )}
-          </div>
-        )}
-
-        <div className="segmented">
-          <button
-            type="button"
-            aria-pressed={mode === 'grouped'}
-            disabled={graph === null || busy}
-            onClick={() => setMode('grouped')}
-            title="Draw each sequence as a labelled box"
-          >
-            Grouped
-          </button>
-          <button
-            type="button"
-            aria-pressed={mode === 'compact'}
-            disabled={graph === null || busy}
-            onClick={() => setMode('compact')}
-            title="Wrap the chain into columns; no sequence boxes"
-          >
-            Compact
-          </button>
-        </div>
-
-        <button
-          type="button"
-          className={`tool${trace ? ' on' : ''}`}
-          aria-pressed={trace}
-          disabled={graph === null}
-          onClick={() => setTrace((t) => !t)}
-          title="Colour what runs before the selected step and what runs after it, dimming the rest"
-        >
-          Trace paths
-        </button>
-
-        <button
-          type="button"
-          className="tool"
-          disabled={graph === null || busy}
-          onClick={relayout}
-          title="Discard manual positions and restore the automatic layout"
-        >
-          {busy ? 'Laying out…' : 'Re-layout'}
-        </button>
-
-        <button
-          type="button"
-          className={`tool${drawerOpen && drawerTab === 'export' ? ' on' : ''}`}
-          disabled={graph === null}
-          onClick={() => {
-            if (drawerOpen && drawerTab === 'export') setDrawerOpen(false);
-            else {
-              setDrawerTab('export');
-              setDrawerOpen(true);
-            }
-          }}
-          title="Mermaid text for Git and documentation"
-        >
-          Export
-        </button>
-      </header>
-
       {showBanner && (
         <div className="banner error">
           <div className="body">
@@ -1138,37 +1309,97 @@ export function App(): React.JSX.Element {
         </div>
       )}
 
-      <div className="panes">
-        <Outline
-          graph={graph}
-          selected={selected}
-          collapsed={collapsed}
-          onSelect={reveal}
-          onToggle={toggle}
-          onCollapseAll={collapseAll}
-          onExpandAll={expandAll}
-          text={text}
-          onTextChange={setText}
-          elements={elements}
-          onElementsChange={setElements}
-          available={available}
-          results={results}
-          searching={searching}
-        />
-
-        <div className="canvas-wrap">
-          {graph === null ? (
-            <div className="empty">
-              <div className="dropzone">
-                <h1>Drop a test sequence XML file here</h1>
-                <p>
-                  Everything runs in this page. Nothing is uploaded, and the tool never writes
-                  back to your sequence.
-                </p>
+      <div className="workspace">
+        <section
+          className="left-panel"
+          style={flowchartVisible ? { flex: `0 0 ${outlinePanel.size}px` } : undefined}
+        >
+          <div className="outline-section">
+            {graph === null ? (
+              <div className="empty">
+                <div className="dropzone">
+                  <h1>Drop a test sequence XML file here</h1>
+                  <p>
+                    Everything runs in this page. Nothing is uploaded, and the tool never writes
+                    back to your sequence.
+                  </p>
+                </div>
+                {busy && <p className="hint">Parsing…</p>}
               </div>
-              {busy && <p className="hint">Parsing…</p>}
-            </div>
-          ) : (
+            ) : (
+              <Outline
+                graph={graph}
+                selected={selected}
+                collapsed={collapsed}
+                onSelect={reveal}
+                onToggle={toggle}
+                onCollapseAll={collapseAll}
+                onExpandAll={expandAll}
+                text={text}
+                onTextChange={setText}
+                elements={elements}
+                onElementsChange={setElements}
+                available={available}
+                results={results}
+                searching={searching}
+                textSize={outlineTextSize}
+                onTextSizeChange={setOutlineTextSize}
+              />
+            )}
+          </div>
+
+          {graph !== null && (
+            <>
+              <div
+                className="split-handle"
+                onPointerDown={detailsPanel.onHandleDown}
+                onDoubleClick={detailsPanel.reset}
+                role="separator"
+                aria-orientation="horizontal"
+                title="Drag to resize — double-click to reset"
+              />
+              <div className="details-section" style={{ height: detailsPanel.size }}>
+                <StepDetails
+                  graph={graph}
+                  selected={selected}
+                  snippets={snippets}
+                  onSelect={reveal}
+                  ahead={ahead}
+                  offset={selected === null ? null : (stepOffsets.get(selected) ?? null)}
+                  change={
+                    selected === null || diff === null ? null : (diff.status.get(selected) ?? null)
+                  }
+                  signalNames={signalNames.names}
+                />
+              </div>
+            </>
+          )}
+        </section>
+
+        {flowchartVisible && (
+          <div
+            className="resize-handle"
+            onPointerDown={outlinePanel.onHandleDown}
+            onDoubleClick={outlinePanel.reset}
+            role="separator"
+            aria-orientation="vertical"
+            title="Drag to resize — double-click to reset"
+          />
+        )}
+
+        <button
+          type="button"
+          className="flow-toggle"
+          onClick={() => setFlowchartVisible(!flowchartVisible)}
+          title={flowchartVisible ? 'Hide the flowchart' : 'Show the flowchart'}
+          aria-label={flowchartVisible ? 'Hide the flowchart' : 'Show the flowchart'}
+          aria-pressed={flowchartVisible}
+        >
+          {flowchartVisible ? '❯' : '❮'}
+        </button>
+
+        <div className="canvas-wrap" hidden={!flowchartVisible}>
+          {graph !== null && (
             <ReactFlowProvider>
               <Canvas
                 nodes={renderNodes}
@@ -1183,21 +1414,23 @@ export function App(): React.JSX.Element {
             </ReactFlowProvider>
           )}
         </div>
-
-        <Inspector
-          graph={graph}
-          selected={selected}
-          snippets={snippets}
-          onSelect={reveal}
-          ahead={ahead}
-          offset={selected === null ? null : (stepOffsets.get(selected) ?? null)}
-          change={selected === null || diff === null ? null : (diff.status.get(selected) ?? null)}
-          signalNames={signalNames.names}
-        />
       </div>
+
+      <button
+        type="button"
+        className="settings-gear"
+        disabled={graph === null}
+        onClick={() => setSettingsOpen(!settingsOpen)}
+        title="Settings"
+        aria-label="Settings"
+        aria-pressed={settingsOpen}
+      >
+        ⚙
+      </button>
 
       <Drawer
         graph={graph}
+        view={viewInfo}
         signalNames={signalNames}
         signalNamesFile={signalNamesFile}
         onClearSignalNames={clearSignalNames}
@@ -1211,7 +1444,6 @@ export function App(): React.JSX.Element {
         edges={renderEdges}
         routes={routes}
         highlighted={highlight !== null || matches !== null || spotlight !== null}
-        layoutMode={mode}
         collapsed={collapsed}
         index={index}
         rows={signals}
@@ -1239,12 +1471,12 @@ export function App(): React.JSX.Element {
         onClearBaseline={clearBaseline}
         diffRow={diffRow}
         onDiffRow={setDiffRow}
-        open={drawerOpen}
-        tab={drawerTab}
+        open={settingsOpen}
+        tab={settingsTab}
         signal={signal}
         selected={selected}
-        onTab={setDrawerTab}
-        onOpen={setDrawerOpen}
+        onTab={setSettingsTab}
+        onOpen={setSettingsOpen}
         onSignal={setSignal}
         onSelect={reveal}
       />

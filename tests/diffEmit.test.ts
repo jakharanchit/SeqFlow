@@ -7,21 +7,14 @@ import ELK from 'elkjs/lib/elk.bundled.js';
 import { toFlow, type FlowEdge, type FlowNode } from '../src/emit/flow';
 import { DIFF_CLASS_DEFS, toMermaid } from '../src/emit/mermaid';
 import { diffClass, toSvg } from '../src/emit/svg';
-import {
-  applyLayout,
-  edgeRoutes,
-  fromElk,
-  nodesForMode,
-  toElk,
-  type ElkLike,
-} from '../src/layout/elkGraph';
+import { applyLayout, edgeRoutes, fromElk, toElk, type ElkLike } from '../src/layout/elkGraph';
 import { domParser, fixtureXml, rules } from './helpers';
 
 const elk = new ELK() as ElkLike;
 
 async function lay(nodes: FlowNode[], edges: FlowEdge[]) {
-  const subject = nodesForMode(nodes, 'grouped');
-  const result = await elk.layout(toElk(subject, edges, 'grouped'));
+  const subject = [...nodes];
+  const result = await elk.layout(toElk(subject, edges));
   return { nodes: applyLayout(subject, fromElk(result)), routes: edgeRoutes(result) };
 }
 
@@ -71,7 +64,7 @@ describe('the merged graph is an ordinary graph', () => {
     expect(merged.nodes.size).toBe(133);
     const flow = toFlow(merged, rules);
     const placed = await lay(flow.nodes, flow.edges);
-    expect(placed.nodes).toHaveLength(nodesForMode(flow.nodes, 'grouped').length);
+    expect(placed.nodes).toHaveLength(flow.nodes.length);
     expect(placed.nodes.some((n) => n.id === FIRST_STATUS)).toBe(true);
   });
 

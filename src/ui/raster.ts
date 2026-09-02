@@ -45,7 +45,7 @@ export async function svgToPng(
   if (w <= 0 || h <= 0) throw new RasterError('nothing to export');
   if (w * h > MAX_PIXELS) {
     throw new RasterError(
-      `${w} x ${h} is ${Math.round((w * h) / 1e6)} Mpx, past what a browser canvas will hold. Try 1x, or the compact layout.`,
+      `${w} x ${h} is ${Math.round((w * h) / 1e6)} Mpx, past what a browser canvas will hold. Try 1x, or fold some sequences in the outline first.`,
     );
   }
 

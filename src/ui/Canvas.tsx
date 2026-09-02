@@ -60,11 +60,11 @@ const FIT_PADDING = 0.06;
 const MIN_PAN_MARGIN = 400;
 
 const KIND_COLOR: Record<string, string> = {
-  action: '#3c86c9',
-  decision: '#c98f2e',
-  criteria: '#cf5b52',
-  jump: '#9a6bd0',
-  container: '#2a313d',
+  action: '#1264a3',
+  decision: '#9a6a00',
+  criteria: '#a52a1f',
+  jump: '#6b3fa0',
+  container: '#a8a8a8',
 };
 
 export interface CanvasProps {
@@ -377,13 +377,13 @@ export function Canvas({
         proOptions={{ hideAttribution: true }}
         defaultEdgeOptions={{ type: 'routed' }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#252b36" />
+        <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#d8d8d8" />
         {/* The fit button uses the same computed fit, not React Flow's. */}
         <Controls showInteractive={false} onFitView={fitAll} />
         <MiniMap
           pannable
           zoomable
-          maskColor="rgba(10,12,16,0.72)"
+          maskColor="rgba(0,0,0,0.08)"
           nodeColor={(n) => {
             const data = n.data as unknown as FlowNodeData;
             return KIND_COLOR[data.kind] ?? EDGE_COLOR['fallthrough']!;

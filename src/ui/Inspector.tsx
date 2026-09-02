@@ -1,10 +1,15 @@
 /**
- * Right-hand panel for the selected node.
+ * Step details, docked under the outline tree in the left panel.
  *
  * Shows every attribute verbatim — the parser does not decide what matters —
  * plus attributes lifted from non-step children, plus the raw XML. For a
  * ConditionStep the lifted Comparison is the actual condition, and is the
  * whole point of the panel.
+ *
+ * `CanvasHelp` is exported separately: the shortcut/legend reference material
+ * that used to fill this panel when nothing was selected has nothing to do
+ * with a selected step, so it lives in the settings panel's View tab instead.
+ * `StepDetails` itself just asks the reader to select something.
  */
 
 import { numberedName } from '../core/ancestry';
@@ -123,7 +128,102 @@ const LEGEND: readonly (readonly [string, string, boolean])[] = [
   ['loop', 'loop back', true],
 ];
 
-export function Inspector({
+/**
+ * Reference material for the empty-selection state: step-type counts, canvas
+ * shortcuts, the edge legend, and the trace-paths legend. None of it is about
+ * a selected step, so it lives in the settings panel's View tab rather than
+ * in `StepDetails`.
+ */
+export function CanvasHelp({ graph }: { graph: Graph }): React.JSX.Element {
+  const counts = [...graph.nodes.values()].reduce<Record<string, number>>((acc, n) => {
+    acc[n.element] = (acc[n.element] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <>
+      <div className="section">
+        <h3>Step types</h3>
+        <table className="attrs">
+          <tbody>
+            {Object.entries(counts)
+              .sort((a, b) => b[1] - a[1])
+              .map(([element, n]) => (
+                <tr key={element}>
+                  <td className="k">{element}</td>
+                  <td className="v">{n}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="section">
+        <h3>Canvas</h3>
+        <table className="attrs">
+          <tbody>
+            <tr>
+              <td className="k">scroll</td>
+              <td className="v">pan up and down</td>
+            </tr>
+            <tr>
+              <td className="k">+ / −</td>
+              <td className="v">zoom in / out</td>
+            </tr>
+            <tr>
+              <td className="k">0 / 1</td>
+              <td className="v">fit to view / 100%</td>
+            </tr>
+            <tr>
+              <td className="k">double-click</td>
+              <td className="v">collapse or expand a sequence</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="section">
+        <h3>Edges</h3>
+        <div className="legend">
+          {/*
+            Colours come from the emitter's own map so the key cannot drift
+            from the canvas. The dash is the rule file's choice per edge, not
+            per reason; these are the styles those reasons actually carry.
+          */}
+          {LEGEND.map(([reason, label, dashed]) => (
+            <span key={reason}>
+              <i
+                style={{
+                  borderTop: `2px ${dashed ? 'dashed' : 'solid'} ${EDGE_COLOR[reason]}`,
+                }}
+              />
+              {label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="section">
+        <h3>Trace paths</h3>
+        <div className="legend">
+          <span>
+            <i style={{ borderTop: '2px solid var(--path-up)' }} />
+            runs before
+          </span>
+          <span>
+            <i style={{ borderTop: '2px solid var(--path-down)' }} />
+            runs after
+          </span>
+        </div>
+        <p className="hint">
+          A loop&rsquo;s back edge is left out of the walk. Following it would make every step
+          in the loop both before and after every other, which is true and tells you nothing.
+        </p>
+      </div>
+    </>
+  );
+}
+
+export function StepDetails({
   graph,
   selected,
   snippets,
@@ -135,101 +235,18 @@ export function Inspector({
 }: InspectorProps): React.JSX.Element {
   if (graph === null) {
     return (
-      <aside className="inspector">
+      <div className="step-details">
         <p className="hint">Drop a sequence XML file onto the page to begin.</p>
-      </aside>
+      </div>
     );
   }
 
   const node = selected === null ? undefined : graph.nodes.get(selected);
   if (node === undefined) {
-    const counts = [...graph.nodes.values()].reduce<Record<string, number>>((acc, n) => {
-      acc[n.element] = (acc[n.element] ?? 0) + 1;
-      return acc;
-    }, {});
-
     return (
-      <aside className="inspector">
-        <p className="hint">Select a node to inspect it.</p>
-        <div className="section">
-          <h3>Step types</h3>
-          <table className="attrs">
-            <tbody>
-              {Object.entries(counts)
-                .sort((a, b) => b[1] - a[1])
-                .map(([element, n]) => (
-                  <tr key={element}>
-                    <td className="k">{element}</td>
-                    <td className="v">{n}</td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="section">
-          <h3>Canvas</h3>
-          <table className="attrs">
-            <tbody>
-              <tr>
-                <td className="k">scroll</td>
-                <td className="v">pan up and down</td>
-              </tr>
-              <tr>
-                <td className="k">+ / −</td>
-                <td className="v">zoom in / out</td>
-              </tr>
-              <tr>
-                <td className="k">0 / 1</td>
-                <td className="v">fit to view / 100%</td>
-              </tr>
-              <tr>
-                <td className="k">double-click</td>
-                <td className="v">collapse or expand a sequence</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div className="section">
-          <h3>Edges</h3>
-          <div className="legend">
-            {/*
-              Colours come from the emitter's own map so the key cannot drift
-              from the canvas. The dash is the rule file's choice per edge, not
-              per reason; these are the styles those reasons actually carry.
-            */}
-            {LEGEND.map(([reason, label, dashed]) => (
-              <span key={reason}>
-                <i
-                  style={{
-                    borderTop: `2px ${dashed ? 'dashed' : 'solid'} ${EDGE_COLOR[reason]}`,
-                  }}
-                />
-                {label}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="section">
-          <h3>Trace paths</h3>
-          <div className="legend">
-            <span>
-              <i style={{ borderTop: '2px solid var(--path-up)' }} />
-              runs before
-            </span>
-            <span>
-              <i style={{ borderTop: '2px solid var(--path-down)' }} />
-              runs after
-            </span>
-          </div>
-          <p className="hint">
-            A loop&rsquo;s back edge is left out of the walk. Following it would make every
-            step in the loop both before and after every other, which is true and tells you
-            nothing.
-          </p>
-        </div>
-      </aside>
+      <div className="step-details">
+        <p className="hint">Select a step in the tree to see its details.</p>
+      </div>
     );
   }
 
@@ -239,7 +256,7 @@ export function Inspector({
   const snippet = snippets.get(node.uid);
 
   return (
-    <aside className="inspector">
+    <div className="step-details">
       <h2 className="insp-title">{node.name === '' ? node.element : node.name}</h2>
       <div className="insp-sub">
         {node.stepNumber !== '' && <span className="chip step">{node.stepNumber}</span>}
@@ -380,6 +397,6 @@ export function Inspector({
           <pre className="xml">{snippet}</pre>
         </div>
       )}
-    </aside>
+    </div>
   );
 }

@@ -1,21 +1,37 @@
+/*
+ * A LabVIEW-style light theme — white panels, light-grey chrome, black text,
+ * a blue selection highlight — replacing the dark theme this app shipped
+ * with as a standalone tool. Every colour in the app is one of these
+ * variables, with two exceptions: `EDGE_COLOR` in `emit/flow.ts`, and a
+ * handful of `rgba()` tints below that need a colour's RGB triplet directly
+ * for a translucency a `var()` reference can't carry. Retuning the look
+ * later is a matter of editing this block and those `rgba()` triplets, not
+ * hunting through the file.
+ */
 :root {
-  --bg: #12151b;
-  --bg-panel: #171b23;
-  --bg-raised: #1e232d;
-  --bg-input: #0e1116;
-  --line: #2a313d;
-  --line-soft: #222833;
-  --text: #dfe4ec;
-  --text-dim: #98a1b2;
-  --text-faint: #6b7688;
-  --accent: #5aa2e8;
-  --accent-soft: rgba(90, 162, 232, 0.16);
-  --warn: #d9a441;
-  --error: #e0645c;
-  --action: #3c86c9;
-  --decision: #c98f2e;
-  --criteria: #cf5b52;
-  --jump: #9a6bd0;
+  --bg: #f0f0f0;
+  --bg-panel: #ffffff;
+  --bg-raised: #f7f7f7;
+  --bg-input: #ffffff;
+  --line: #c9c9c9;
+  --line-soft: #e2e2e2;
+  /** A hover border a shade darker than `--line`, for controls that need one
+   * more step of emphasis than the default border on interaction. */
+  --line-strong: #a8a8a8;
+  --text: #1a1a1a;
+  --text-dim: #5a5a5a;
+  --text-faint: #8a8a8a;
+  --accent: #1264a3;
+  --accent-soft: rgba(18, 100, 163, 0.12);
+  --warn: #9a6a00;
+  --error: #b3261e;
+  --action: #1264a3;
+  --decision: #9a6a00;
+  --criteria: #a52a1f;
+  --jump: #6b3fa0;
+  /** Subtle row/list hover tint — a dark tint on a light panel, where the
+   * dark theme this replaced used a light tint on a dark one. */
+  --hover-bg: rgba(0, 0, 0, 0.035);
   --radius: 6px;
   --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
   --sans: ui-sans-serif, system-ui, "Segoe UI", Inter, Roboto, sans-serif;
@@ -48,29 +64,6 @@ body {
   height: 100%;
 }
 
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 12px;
-  height: 44px;
-  flex: 0 0 auto;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--line);
-}
-
-.brand {
-  font-weight: 650;
-  letter-spacing: 0.02em;
-  margin-right: 2px;
-}
-
-.brand span {
-  color: var(--text-faint);
-  font-weight: 400;
-  margin-left: 8px;
-}
-
 .spacer {
   flex: 1;
 }
@@ -87,8 +80,8 @@ button.tool {
 }
 
 button.tool:hover:not(:disabled) {
-  border-color: #3a4352;
-  background: #232a35;
+  border-color: var(--line-strong);
+  background: #e6e6e6;
 }
 
 button.tool:disabled {
@@ -135,32 +128,169 @@ button.tool:disabled {
 
 /* ---------------------------------------------------------------- body */
 
-.panes {
+.workspace {
   flex: 1;
   display: flex;
   min-height: 0;
 }
 
-/* The canvas is the point of the app; the side panes give way to it. */
+/*
+ * The left panel — sequence tree above, selected-step details below — and
+ * the flowchart beside it. This used to be three side-by-side panes
+ * (outline / canvas / inspector); it is now this one resizable panel plus
+ * the canvas, because an embedded LabVIEW panel replacing LabVIEW's own
+ * sequence tree only has room for the tree-and-its-detail and an optional
+ * diagram. Width comes from an inline style driven by `useResizable`
+ * (App.tsx); the flex basis below is only what applies with no inline style,
+ * i.e. once the flowchart is hidden and this is the only thing left to fill.
+ */
+.left-panel {
+  flex: 1 1 auto;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--bg-panel);
+}
+
+.outline-section {
+  flex: 1 1 auto;
+  min-height: 60px;
+  display: flex;
+  overflow: hidden;
+}
+
+.outline-section > .outline,
+.outline-section > .empty {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.details-section {
+  flex: 0 0 auto;
+  overflow-y: auto;
+  background: var(--bg-panel);
+}
+
+.step-details {
+  padding: 14px;
+}
+
+/*
+ * Both drag handles: a vertical seam between the left panel and the canvas,
+ * a horizontal one between the tree and the details section. Same look,
+ * different axis — `useResizable` (App.tsx) drives both from one hook.
+ */
+.resize-handle,
+.split-handle {
+  flex: 0 0 auto;
+  background: transparent;
+}
+
+.resize-handle {
+  width: 6px;
+  cursor: col-resize;
+  border-left: 1px solid var(--line);
+}
+
+.split-handle {
+  height: 6px;
+  cursor: row-resize;
+  border-top: 1px solid var(--line);
+}
+
+.resize-handle:hover,
+.resize-handle:active,
+.split-handle:hover,
+.split-handle:active {
+  background: var(--accent-soft);
+}
+
+/*
+ * The button that shows or hides the flowchart. A thin strip at the boundary
+ * between the two panels, rather than a control tucked inside settings —
+ * this is a primary layout choice, not a preference, so it stays visible
+ * whichever way it is currently set.
+ */
+.flow-toggle {
+  flex: 0 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: var(--text-faint);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.flow-toggle:hover {
+  background: #e6e6e6;
+  color: var(--text);
+}
+
+/*
+ * The canvas is the point of the app when it is shown; the side panel gives
+ * way to it. `[hidden]` — not just a dimmed or zero-width state — so a click
+ * meant for the tree can never land on a canvas the toolbar says is off.
+ */
 .canvas-wrap {
   flex: 1 1 auto;
   min-width: 280px;
   position: relative;
 }
 
-.inspector {
-  flex: 0 1 340px;
-  min-width: 210px;
-  border-left: 1px solid var(--line);
-  background: var(--bg-panel);
-  overflow-y: auto;
-  padding: 14px;
+.canvas-wrap[hidden] {
+  display: none;
+}
+
+/*
+ * A small floating settings button — the only other persistent chrome beside
+ * the flowchart toggle, now that the toolbar header and the bottom drawer are
+ * both gone. Opens the settings panel (`.drawer`, restyled as an overlay
+ * below) rather than a permanent strip of controls.
+ */
+.settings-gear {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 30;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.settings-gear:hover:not(:disabled),
+.settings-gear[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.settings-gear:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 /* ---------------------------------------------------------------- banner */
 
 .banner {
   padding: 9px 12px;
+  /* Clears the fixed settings gear, which sits at the same top-right corner
+   * regardless of whether a banner is showing. */
+  padding-right: 48px;
   font-size: 12px;
   display: flex;
   align-items: flex-start;
@@ -169,13 +299,13 @@ button.tool:disabled {
 }
 
 .banner.error {
-  background: rgba(224, 100, 92, 0.12);
-  color: #f0b3ae;
+  background: rgba(179, 38, 30, 0.09);
+  color: var(--error);
 }
 
 .banner.warn {
-  background: rgba(217, 164, 65, 0.11);
-  color: #e8c98b;
+  background: rgba(154, 106, 0, 0.1);
+  color: var(--warn);
 }
 
 .banner .body {
@@ -342,12 +472,12 @@ button.tool:disabled {
 .rf-node.selected {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
-  background: #253044;
+  background: var(--accent-soft);
 }
 
 .rf-node.convergent {
   border-style: solid;
-  box-shadow: 0 0 0 1px rgba(207, 91, 82, 0.55), 0 0 14px rgba(207, 91, 82, 0.2);
+  box-shadow: 0 0 0 1px rgba(165, 42, 31, 0.55), 0 0 14px rgba(165, 42, 31, 0.2);
 }
 
 .rf-node .fanin {
@@ -364,7 +494,7 @@ button.tool:disabled {
   height: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.018);
+  background: rgba(0, 0, 0, 0.02);
 }
 
 .rf-group .title .num {
@@ -441,19 +571,19 @@ button.tool:disabled {
 
 .chip.kind-action {
   border-color: var(--action);
-  color: #8dbde9;
+  color: var(--action);
 }
 .chip.kind-decision {
   border-color: var(--decision);
-  color: #e2bc72;
+  color: var(--decision);
 }
 .chip.kind-criteria {
   border-color: var(--criteria);
-  color: #eb958e;
+  color: var(--criteria);
 }
 .chip.kind-jump {
   border-color: var(--jump);
-  color: #c4a3e8;
+  color: var(--jump);
 }
 .chip.kind-container {
   border-color: var(--line);
@@ -549,7 +679,7 @@ pre.xml {
 }
 
 .react-flow__controls-button:hover {
-  background: #232a35;
+  background: #e6e6e6;
 }
 
 .react-flow__minimap {
@@ -599,17 +729,47 @@ pre.xml {
 /* ---------------------------------------------------------------- outline */
 
 .outline {
-  flex: 0 1 262px;
-  min-width: 158px;
-  border-right: 1px solid var(--line);
   background: var(--bg-panel);
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* Fallbacks for the two rows below — overridden inline per the text-size
+   * level in `OUTLINE_SIZES` (Outline.tsx), which is the one place both
+   * numbers are defined. */
+  --outline-font-size: 12px;
+  --outline-row-height: 22px;
 }
 
 .outline > .hint {
   padding: 14px;
+}
+
+.outline-textsize {
+  display: flex;
+  gap: 2px;
+}
+
+.outline-textsize button {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 9.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  padding: 2px 5px;
+  cursor: pointer;
+}
+
+.outline-textsize button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.outline-textsize button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .outline-head {
@@ -646,7 +806,7 @@ pre.xml {
 }
 
 .outline-actions button:hover {
-  border-color: #3a4352;
+  border-color: var(--line-strong);
   color: var(--text);
 }
 
@@ -660,9 +820,9 @@ pre.xml {
   display: flex;
   align-items: center;
   gap: 5px;
-  height: 22px;
+  height: var(--outline-row-height);
   padding-right: 8px;
-  font-size: 12px;
+  font-size: var(--outline-font-size);
   color: var(--text-dim);
   cursor: pointer;
   user-select: none;
@@ -670,7 +830,7 @@ pre.xml {
 }
 
 .outline .row:hover {
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--hover-bg);
 }
 
 .outline .row.selected {
@@ -736,8 +896,14 @@ pre.xml {
 .outline .row-count {
   flex: 0 0 auto;
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: calc(var(--outline-font-size) - 2.5px);
   color: var(--text-faint);
+}
+
+/* Scales with the same text-size control as the row it sits in, rather than
+ * staying pinned at the size tuned for the default M level. */
+.outline .step-num {
+  font-size: calc(var(--outline-font-size) - 2px);
 }
 
 /* -------------------------------------------------------- collapsed node */
@@ -746,7 +912,7 @@ pre.xml {
   border-radius: 8px;
   border: 1.5px dashed var(--text-faint);
   border-left: 3px solid var(--text-dim);
-  background: #1b212b;
+  background: var(--bg);
 }
 
 .rf-node.collapsed .label {
@@ -833,7 +999,7 @@ pre.xml {
 }
 
 .filter-chip:hover {
-  border-color: #3a4352;
+  border-color: var(--line-strong);
   color: var(--text-dim);
 }
 
@@ -867,7 +1033,7 @@ pre.xml {
 }
 
 .outline .result:hover {
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--hover-bg);
 }
 
 .outline .result.selected {
@@ -887,7 +1053,7 @@ pre.xml {
 }
 
 .result-name mark {
-  background: rgba(90, 162, 232, 0.32);
+  background: rgba(18, 100, 163, 0.28);
   color: inherit;
   border-radius: 2px;
 }
@@ -939,8 +1105,8 @@ pre.xml {
  * anything genuinely on both sides, which only a real loop produces.
  */
 :root {
-  --path-up: #4f9d76;
-  --path-down: #d08a3c;
+  --path-up: #1a7f4b;
+  --path-down: #b06a1c;
 }
 
 .react-flow__node.path-up .rf-node {
@@ -976,36 +1142,41 @@ button.tool.on {
 
 /* ---------------------------------------------------------------- drawer */
 
+/*
+ * The settings panel — a right-side overlay, not a bottom-docked bar. An
+ * embedded LabVIEW panel has no room for a permanent strip of tab chrome, so
+ * `.drawer` is entirely hidden until the gear button opens it, and then it
+ * takes the full viewport height rather than trading a fixed height against
+ * whichever tab happens to be active (the old `.tall` variant this replaced
+ * existed only because a bottom bar had a height to negotiate at all).
+ */
 .drawer {
-  flex: 0 0 auto;
-  border-top: 1px solid var(--line);
-  background: var(--bg-panel);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+  display: none;
 }
 
 .drawer.open {
-  height: min(216px, 38vh);
-}
-
-/* The export preview is the one tab worth trading canvas height for. */
-.drawer.open.tall {
-  height: min(460px, 56vh);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(480px, 92vw);
+  min-height: 0;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--line);
+  box-shadow: -6px 0 18px rgba(0, 0, 0, 0.15);
+  z-index: 25;
 }
 
 .drawer-tabs {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 8px;
-  height: 29px;
+  flex-wrap: wrap;
+  gap: 2px 0;
+  padding: 5px 8px;
   flex: 0 0 auto;
-  border-bottom: 1px solid transparent;
-}
-
-.drawer.open .drawer-tabs {
-  border-bottom-color: var(--line);
+  border-bottom: 1px solid var(--line);
 }
 
 .drawer-tabs .spacer {
@@ -1035,15 +1206,6 @@ button.tool.on {
   margin-left: 0;
   padding-left: 0;
   border-left: none;
-}
-
-/* Narrow windows lose the words but keep the rules, so the grouping survives. */
-@media (max-width: 1100px) {
-  .drawer-tabs .tab-group {
-    width: 0;
-    margin: 0 5px 0 7px;
-    overflow: hidden;
-  }
 }
 
 .drawer-tabs button {
@@ -1087,22 +1249,32 @@ button.tool.on {
   font-size: 11px;
 }
 
+/*
+ * A master/detail pair (Signals, Repeats, Schema) stacks list-over-detail
+ * rather than sitting side by side — the panel is at most 480px wide now
+ * that it is a side overlay rather than a full-width bottom bar, and a fixed
+ * 340px list column would leave the detail pane too narrow to read an
+ * attribute table in.
+ */
 .drawer-body {
   flex: 1;
   display: flex;
+  flex-direction: column;
   min-height: 0;
 }
 
 .drawer-list {
-  flex: 0 0 340px;
+  flex: 0 1 auto;
+  max-height: 42%;
   overflow-y: auto;
-  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   padding: 4px 0 8px;
 }
 
 .drawer-list.wide {
   flex: 1;
-  border-right: 0;
+  max-height: none;
+  border-bottom: 0;
 }
 
 .drawer-list > .hint,
@@ -1121,7 +1293,7 @@ button.tool.on {
 }
 
 .signal-row:hover {
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--hover-bg);
 }
 
 .signal-row.selected {
@@ -1154,7 +1326,7 @@ button.tool.on {
 
 .drawer-detail {
   flex: 1;
-  overflow-y: auto;
+  overflow: auto;
   padding: 4px 0 8px;
   min-width: 0;
 }
@@ -1169,7 +1341,7 @@ button.tool.on {
 }
 
 .detail-row:hover {
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--hover-bg);
 }
 
 .detail-name {
@@ -1198,7 +1370,7 @@ button.tool.on {
 }
 
 .warn-row:hover {
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--hover-bg);
 }
 
 .warn-code {
@@ -1315,7 +1487,7 @@ table.diff tbody tr {
 }
 
 table.diff tbody tr:hover {
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--hover-bg);
 }
 
 .diff-step {
@@ -1406,12 +1578,12 @@ table.diff tbody tr:hover {
 }
 
 :hover::-webkit-scrollbar-thumb {
-  background-color: #333c4a;
+  background-color: var(--line);
   background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #475263;
+  background-color: var(--line-strong);
   background-clip: content-box;
 }
 
@@ -1573,10 +1745,10 @@ button.tool.save-png {
 /* ================================================================ Phase 4 */
 
 :root {
-  --added: #57a86b;
-  --removed: #d4544a;
-  --changed: #c98f2e;
-  --info: #6b7688;
+  --added: #1a7f4b;
+  --removed: #b3261e;
+  --changed: #9a6a00;
+  --info: #6b6b6b;
 }
 
 /* The kind dot the drawer detail rows have always rendered and never styled —
@@ -1677,7 +1849,7 @@ button.tool.save-png {
 }
 
 .finding-row:hover {
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--hover-bg);
 }
 
 .finding-row.selected {
@@ -1725,7 +1897,7 @@ button.tool.save-png {
 
 /* The one row the arithmetic can prove. The other seven are still there. */
 table.diff tr.odd-row td {
-  background: rgba(217, 164, 65, 0.08);
+  background: rgba(154, 106, 0, 0.1);
 }
 
 table.diff tr.odd-row .diff-attr {
@@ -2013,6 +2185,78 @@ table.diff tr.odd-row .diff-attr {
 }
 
 /*
+ * Live execution status, pushed in over the LabVIEW bridge as a test runs —
+ * see src/bridge/. A small badge in the corner rather than a border or
+ * outline, on purpose: `on-path`/`path-up`/`path-down` already own
+ * border-color, and diff already owns the inset box-shadow stripe, so this
+ * needs its own channel to stay legible when more than one applies at once —
+ * a step can be both "running" and "on the traced path".
+ *
+ * On `.react-flow__node`, not `.rf-node`: the diamond and hexagon shapes clip
+ * `.rf-node` itself (see `.shape-diamond`/`.shape-hexagon` above), which would
+ * cut a corner badge off. The outer React Flow wrapper is never clipped.
+ */
+:root {
+  --exec-pending: #8a8a8a;
+  --exec-running: var(--accent);
+  --exec-pass: var(--added);
+  --exec-fail: var(--removed);
+  --exec-skipped: #8a8a8a;
+}
+
+.react-flow__node.exec-pending::before,
+.react-flow__node.exec-running::before,
+.react-flow__node.exec-pass::before,
+.react-flow__node.exec-fail::before,
+.react-flow__node.exec-skipped::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--bg);
+  z-index: 2;
+}
+
+.react-flow__node.exec-pending::before {
+  background: var(--exec-pending);
+}
+
+.react-flow__node.exec-running::before {
+  background: var(--exec-running);
+  animation: exec-pulse 1.1s ease-in-out infinite;
+}
+
+.react-flow__node.exec-pass::before {
+  background: var(--exec-pass);
+}
+
+.react-flow__node.exec-fail::before {
+  background: var(--exec-fail);
+  box-shadow: 0 0 0 2px rgba(179, 38, 30, 0.35);
+}
+
+/* Hollow, not filled: distinguishes "skipped" from "pending" without a
+   second colour — a step nobody is waiting on reads differently from one that
+   simply has not started. */
+.react-flow__node.exec-skipped::before {
+  background: transparent;
+  border-color: var(--exec-skipped);
+}
+
+@keyframes exec-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/*
  * The step number in front of a name, in every list: the outline, the search
  * results, the findings, the criteria table, the signal drawer and the diff.
  *
@@ -2118,11 +2362,11 @@ table.schema-table td {
 }
 
 table.schema-table tr.odd td {
-  background: rgba(217, 164, 65, 0.08);
+  background: rgba(154, 106, 0, 0.1);
 }
 
 table.schema-table tr.bad td {
-  background: rgba(212, 84, 74, 0.1);
+  background: rgba(179, 38, 30, 0.1);
 }
 
 table.schema-table tr.bad td b {
@@ -2151,7 +2395,7 @@ pre.schema-fragment {
   margin: 8px 0 0;
   padding: 10px 12px;
   overflow-x: auto;
-  background: var(--panel-deep, rgba(0, 0, 0, 0.18));
+  background: var(--panel-deep, rgba(0, 0, 0, 0.04));
   border: 1px solid var(--line-soft);
   border-radius: 4px;
   font-family: var(--mono);

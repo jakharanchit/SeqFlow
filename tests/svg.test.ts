@@ -19,7 +19,6 @@ import {
   edgeRoutes,
   fromElk,
   graphBounds,
-  nodesForMode,
   toElk,
   type ElkLike,
 } from '../src/layout/elkGraph';
@@ -28,12 +27,9 @@ import { domParser, fixtureXml, rules } from './helpers';
 const elk = new ELK() as ElkLike;
 const graph = parse(fixtureXml, { rules, domParser });
 
-async function lay(
-  flowNodes: ReturnType<typeof toFlow>,
-  mode: 'grouped' | 'compact' = 'grouped',
-) {
-  const subject = nodesForMode(flowNodes.nodes, mode);
-  const result = await elk.layout(toElk(subject, flowNodes.edges, mode));
+async function lay(flowNodes: ReturnType<typeof toFlow>) {
+  const subject = [...flowNodes.nodes];
+  const result = await elk.layout(toElk(subject, flowNodes.edges));
   return {
     nodes: applyLayout(subject, fromElk(result)),
     edges: flowNodes.edges,
@@ -42,8 +38,7 @@ async function lay(
 }
 
 const flow = toFlow(graph, rules);
-const grouped = await lay(flow, 'grouped');
-const compact = await lay(flow, 'compact');
+const grouped = await lay(flow);
 
 /** @xmldom/xmldom parses the output, which is the "opens in a browser" proxy. */
 function parseSvg(text: string): Document {
@@ -74,14 +69,6 @@ describe('dimensions', () => {
     expect(bounds.y).toBe(52);
     expect(Math.round(bounds.x + bounds.width)).toBe(svg.width);
     expect(Math.round(bounds.y + bounds.height)).toBe(svg.height);
-  });
-
-  test('compact is the wide layout, roughly 3600 x 2000', () => {
-    const svg = toSvg(compact.nodes, compact.edges, { routes: compact.routes, padding: 0 });
-    expect(svg.width).toBeGreaterThan(2800);
-    expect(svg.width).toBeLessThan(4400);
-    expect(svg.height).toBeGreaterThan(1400);
-    expect(svg.height).toBeLessThan(2600);
   });
 
   test('padding widens the canvas on both sides and shifts the drawing', () => {
@@ -239,7 +226,7 @@ describe('collapse and highlight', () => {
     const folded = toFlow(asGraph(graph, view), rules, {
       collapsedCounts: view.collapsedCounts,
     });
-    const laid = await lay(folded, 'grouped');
+    const laid = await lay(folded);
     const svg = toSvg(laid.nodes, laid.edges, { routes: laid.routes });
 
     expect(laid.nodes.length).toBe(133 - 28);

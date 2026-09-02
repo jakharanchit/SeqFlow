@@ -46,19 +46,6 @@ export interface ElkLike {
 }
 
 /**
- * How to arrange the graph.
- *
- * `grouped` draws each sequence as a labelled box, nested. True to the file,
- * and the pulses read as blocks — but the sequence is a linear chain, so the
- * result is tall: roughly 1000 x 8900 px on the sample.
- *
- * `compact` drops the boxes and lets ELK wrap that chain into columns
- * (roughly 3600 x 2000 px on the sample). No edge changes meaning; it is the
- * same graph folded to a readable aspect ratio, the way text wraps.
- */
-export type LayoutMode = 'grouped' | 'compact';
-
-/**
  * Layered, top-down. `INCLUDE_CHILDREN` is the setting that matters: without
  * it ELK lays each container out in isolation and the cross-container edges —
  * every jump in the file — are routed as an afterthought.
@@ -80,52 +67,8 @@ export const LAYOUT_OPTIONS: Record<string, string> = {
   'elk.padding': `[top=${SIZE.groupHeader + SIZE.groupPadding},left=${SIZE.groupPadding},bottom=${SIZE.groupPadding},right=${SIZE.groupPadding}]`,
 };
 
-/**
- * Wrapping only engages on a flat graph — ELK does not wrap a hierarchical
- * one. That is the whole reason `compact` drops the group boxes.
- */
-export const COMPACT_OPTIONS: Record<string, string> = {
-  'elk.algorithm': 'layered',
-  'elk.direction': 'DOWN',
-  'elk.layered.wrapping.strategy': 'MULTI_EDGE',
-  'elk.aspectRatio': '1.6',
-  'elk.layered.spacing.nodeNodeBetweenLayers': '48',
-  'elk.spacing.nodeNode': '34',
-  'elk.spacing.edgeNode': '24',
-  'elk.edgeRouting': 'ORTHOGONAL',
-  'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
-};
-
-/**
- * The nodes a mode actually lays out. `compact` keeps the leaves only and
- * detaches them from their groups, so React Flow stops treating their
- * positions as parent-relative.
- */
-export function nodesForMode(nodes: readonly FlowNode[], mode: LayoutMode): FlowNode[] {
-  if (mode === 'grouped') return [...nodes];
-  return nodes
-    .filter((n) => n.type === 'seqNode')
-    .map(({ parentId: _parentId, extent: _extent, ...rest }) => rest);
-}
-
 /** Build the ELK request from flow nodes and edges. */
-export function toElk(
-  nodes: readonly FlowNode[],
-  edges: readonly FlowEdge[],
-  mode: LayoutMode = 'grouped',
-): ElkNode {
-  if (mode === 'compact') {
-    return {
-      id: 'root',
-      layoutOptions: COMPACT_OPTIONS,
-      children: nodes.map((n) => ({ id: n.id, width: n.width, height: n.height })),
-      edges: edges.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),
-    };
-  }
-  return toElkGrouped(nodes, edges);
-}
-
-function toElkGrouped(nodes: readonly FlowNode[], edges: readonly FlowEdge[]): ElkNode {
+export function toElk(nodes: readonly FlowNode[], edges: readonly FlowEdge[]): ElkNode {
   const elkById = new Map<string, ElkNode>();
   const roots: ElkNode[] = [];
 

@@ -3,12 +3,12 @@
  *
  * **This is the only file the tool may ever write** (invariant 4). It never
  * writes sequence XML, and nothing here changes that: the sidecar holds
- * positions, a layout mode and a collapsed set, all keyed by uid, and the
- * parser never reads it.
+ * positions and a collapsed set, all keyed by uid, and the parser never
+ * reads it.
  *
  * All 133 positions serialise to about 8 KB, so there is no reason to store a
- * subset, round harder than the layout does, or compress. Storing the mode and
- * the collapsed set alongside is not decoration: reloading a file and getting
+ * subset, round harder than the layout does, or compress. Storing the
+ * collapsed set alongside is not decoration: reloading a file and getting
  * the arrangement back with every sequence re-expanded is not "restored".
  *
  * Pure. Serialising and parsing only — the download lives in the UI.
@@ -23,8 +23,6 @@ export interface Sidecar {
   seqflow: number;
   /** The sequence file this arrangement was made for. Advisory, not a key. */
   file: string;
-  /** `grouped` or `compact`. Positions mean different things in each. */
-  mode: string;
   /** Collapsed container uids, sorted. */
   collapsed: string[];
   /**
@@ -43,7 +41,6 @@ export class SidecarError extends Error {}
 
 export function toSidecar(
   fileName: string,
-  mode: string,
   collapsed: ReadonlySet<string>,
   nodes: readonly FlowNode[],
 ): Sidecar {
@@ -56,7 +53,6 @@ export function toSidecar(
   return {
     seqflow: SIDECAR_VERSION,
     file: fileName,
-    mode,
     collapsed: [...collapsed].sort(),
     positions,
   };
@@ -118,7 +114,6 @@ export function parseSidecar(text: string): Sidecar {
   return {
     seqflow: SIDECAR_VERSION,
     file: typeof value['file'] === 'string' ? value['file'] : '',
-    mode: value['mode'] === 'compact' ? 'compact' : 'grouped',
     collapsed,
     positions,
   };
