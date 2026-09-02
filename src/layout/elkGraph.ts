@@ -82,6 +82,12 @@ export const LAYOUT_OPTIONS: Record<string, string> = {
   // Orthogonal routing reads as a wiring diagram, which is what this is.
   'elk.edgeRouting': 'ORTHOGONAL',
   'elk.layered.mergeEdges': 'true',
+  // Both already match elkjs's own computed defaults for ORTHOGONAL +
+  // NETWORK_SIMPLEX — set explicitly so a future elkjs upgrade can't
+  // silently change them out from under the bend-minimization guarantee
+  // `collapseCollinear` below relies on.
+  'elk.layered.nodePlacement.favorStraightEdges': 'true',
+  'elk.layered.unnecessaryBendpoints': 'false',
   'elk.padding': GROUP_PADDING,
 };
 
@@ -170,6 +176,39 @@ export function fromElk(result: ElkNode): Map<string, Positioned> {
  * where it belongs, and the arrowhead lands in mid-air. This walks the result
  * tree for absolute node positions, finds each edge's LCA, and adds it.
  */
+/**
+ * Collapses a run of collinear points to its two endpoints.
+ *
+ * This app always configures `elk.edgeRouting: ORTHOGONAL` (see
+ * `LAYOUT_OPTIONS` above), so every real bend is a 90° turn — three
+ * consecutive points that share an x *or* a y coordinate are the same
+ * straight run split into two segments for no reason, and dropping the
+ * middle one changes nothing about the line actually drawn. Walks the points
+ * once, extending the last-kept point in place whenever the next point is
+ * still collinear with the previous two, so a run of any length collapses to
+ * its endpoints rather than only catching isolated triples.
+ */
+export function collapseCollinear(points: readonly Point[]): Point[] {
+  if (points.length <= 2) return [...points];
+  const EPSILON = 1e-6;
+  const out: Point[] = [points[0] as Point];
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i] as Point;
+    if (out.length >= 2) {
+      const a = out[out.length - 2] as Point;
+      const b = out[out.length - 1] as Point;
+      const sameX = Math.abs(a.x - b.x) < EPSILON && Math.abs(b.x - p.x) < EPSILON;
+      const sameY = Math.abs(a.y - b.y) < EPSILON && Math.abs(b.y - p.y) < EPSILON;
+      if (sameX || sameY) {
+        out[out.length - 1] = p;
+        continue;
+      }
+    }
+    out.push(p);
+  }
+  return out;
+}
+
 export function edgeRoutes(result: ElkNode): Map<string, Point[]> {
   /* Absolute position and parent of every node in the result. */
   const absolute = new Map<string, Point>([[result.id, { x: 0, y: 0 }]]);
@@ -224,7 +263,8 @@ export function edgeRoutes(result: ElkNode): Map<string, Point[]> {
         }
         points.push({ x: section.endPoint.x + off.x, y: section.endPoint.y + off.y });
       }
-      if (points.length > 1) out.set(edge.id, points);
+      const simplified = collapseCollinear(points);
+      if (simplified.length > 1) out.set(edge.id, simplified);
     }
     for (const child of node.children ?? []) walkEdges(child);
   };

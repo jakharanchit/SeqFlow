@@ -22,10 +22,12 @@ import { parse } from '../src/core/parse';
 import { toFlow, type FlowNode } from '../src/emit/flow';
 import {
   applyLayout,
+  collapseCollinear,
   edgeRoutes,
   fromElk,
   toElk,
   type ElkLike,
+  type ElkNode,
   type Point,
 } from '../src/layout/elkGraph';
 import { domParser, fixtureXml, gasXml, rules } from './helpers';
@@ -158,5 +160,91 @@ describe('the jump that showed the problem', () => {
     const straight = crossings([a, b], longest, boxes);
     expect(straight.length).toBeGreaterThan(0);
     expect(crossings(longest.pts, longest, boxes)).toEqual([]);
+  });
+});
+
+describe('collapseCollinear', () => {
+  it('drops a bend point that does not change direction', () => {
+    // A vertical run ELK split into two segments for no reason: (10,0) ->
+    // (10,50) is added by a long-edge dummy, but (10,50) never turns.
+    const points: Point[] = [
+      { x: 10, y: 0 },
+      { x: 10, y: 50 },
+      { x: 10, y: 100 },
+    ];
+    expect(collapseCollinear(points)).toEqual([
+      { x: 10, y: 0 },
+      { x: 10, y: 100 },
+    ]);
+  });
+
+  it('collapses a run of any length, not just one redundant triple', () => {
+    const points: Point[] = [
+      { x: 0, y: 0 },
+      { x: 0, y: 10 },
+      { x: 0, y: 20 },
+      { x: 0, y: 30 },
+    ];
+    expect(collapseCollinear(points)).toEqual([
+      { x: 0, y: 0 },
+      { x: 0, y: 30 },
+    ]);
+  });
+
+  it('keeps a point where the route actually turns', () => {
+    // ORTHOGONAL routing only ever turns 90°: same x or same y is collinear,
+    // and this point is neither relative to its neighbours.
+    const points: Point[] = [
+      { x: 10, y: 0 },
+      { x: 10, y: 50 },
+      { x: 60, y: 50 },
+    ];
+    expect(collapseCollinear(points)).toEqual(points);
+  });
+
+  it('leaves a two-point route untouched', () => {
+    const points: Point[] = [
+      { x: 10, y: 0 },
+      { x: 10, y: 100 },
+    ];
+    expect(collapseCollinear(points)).toEqual(points);
+  });
+
+  it('edgeRoutes applies it to ELK output, real bends survive', () => {
+    // A synthetic single-edge result: one redundant collinear bend point
+    // (10,50), then a real turn at (10,100) before reaching the target.
+    const result: ElkNode = {
+      id: 'root',
+      children: [
+        { id: 'a', x: 0, y: 0, width: 20, height: 20 },
+        { id: 'b', x: 0, y: 120, width: 20, height: 20 },
+      ],
+      edges: [
+        {
+          id: 'e0',
+          sources: ['a'],
+          targets: ['b'],
+          sections: [
+            {
+              startPoint: { x: 10, y: 20 },
+              bendPoints: [
+                { x: 10, y: 50 },
+                { x: 10, y: 100 },
+                { x: 30, y: 100 },
+              ],
+              endPoint: { x: 30, y: 120 },
+            },
+          ],
+        },
+      ],
+    };
+
+    const routes = edgeRoutes(result);
+    expect(routes.get('e0')).toEqual([
+      { x: 10, y: 20 },
+      { x: 10, y: 100 },
+      { x: 30, y: 100 },
+      { x: 30, y: 120 },
+    ]);
   });
 });
