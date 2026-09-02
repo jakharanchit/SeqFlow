@@ -58,10 +58,19 @@ describe('flow adapter', () => {
     const setSwitch = [...graph.nodes.values()].find(
       (n) => n.name === 'Turn Drive Supply On',
     )!;
-    const text = paramText(setSwitch, rules);
+    // showParamsOnCanvas is off in the shipped rules.yaml — this test is
+    // about the attribute-selection logic, so it opts back in explicitly.
+    const text = paramText(setSwitch, { ...rules, showParamsOnCanvas: true });
     expect(text).toContain('switchTag = drive_source_enable_output');
     expect(text).toContain('state = TRUE');
     expect(text).not.toContain('sensorTag'); // present in XML but empty
+  });
+
+  it('renders nothing when showParamsOnCanvas is off', () => {
+    const setSwitch = [...graph.nodes.values()].find(
+      (n) => n.name === 'Turn Drive Supply On',
+    )!;
+    expect(paramText(setSwitch, { ...rules, showParamsOnCanvas: false })).toBe('');
   });
 
   it('falls back to the element name when a step has no name', () => {

@@ -121,6 +121,7 @@ function measure(label: string, params: string, stepNumber: string): number {
  * are dropped — the sample file is full of `sensorTag=""`.
  */
 export function paramText(node: SeqNode, rules: Rules): string {
+  if (!rules.showParamsOnCanvas) return '';
   const keys = rules.labels[node.element];
   if (keys === undefined) return '';
   const parts: string[] = [];

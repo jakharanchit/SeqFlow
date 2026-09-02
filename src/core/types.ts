@@ -131,6 +131,13 @@ export interface Rules {
    */
   steps?: string[];
   inspectorChildren: Record<string, string[]>;
+  /**
+   * Presentation-only grouping of element types, for the UI's type-filter
+   * panel — e.g. `{ Timing: ['WaitStep', 'StartPeriodicLog'] }`. Changes no
+   * graph semantics. Absent means no grouping; the UI puts every type under
+   * a single "Other" bucket in that case.
+   */
+  categories: Record<string, string[]>;
   shapes: Record<string, NodeShape> & { default: NodeShape };
   kinds: Record<string, NodeKind> & { default: NodeKind };
   edges: EdgeRule[];
@@ -150,6 +157,14 @@ export interface Rules {
    */
   loops: Record<string, LoopRule>;
   convergenceThreshold: number;
+  /**
+   * Whether a leaf node's canvas box shows its `labels`-attribute text (the
+   * "setpointTag = ..." line). Optional; absent means `true`, so a rule file
+   * that predates this key keeps today's behaviour. The shipped rules.yaml
+   * sets this `false` — that text reads as internal metadata on the diagram,
+   * not something a reader following the flow needs on the shape itself.
+   */
+  showParamsOnCanvas: boolean;
 }
 
 export interface Durations {

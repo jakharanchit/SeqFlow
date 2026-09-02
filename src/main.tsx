@@ -1,3 +1,7 @@
+// Side-effect only, and first: installs a Promise polyfill before anything
+// below — including React itself — runs. See polyfills.ts for why.
+import './polyfills';
+
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 

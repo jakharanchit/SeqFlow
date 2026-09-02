@@ -284,6 +284,11 @@ export function loadRules(yamlText: string): Rules {
     throw new RuleFileError('convergence_threshold', 'expected a positive number');
   }
 
+  const showParamsOnCanvas = doc['show_params_on_canvas'] ?? true;
+  if (typeof showParamsOnCanvas !== 'boolean') {
+    throw new RuleFileError('show_params_on_canvas', 'expected a boolean');
+  }
+
   const containers = strArray(doc, 'containers');
   if (containers.length === 0) {
     throw new RuleFileError('containers', 'must declare at least one container element');
@@ -295,6 +300,7 @@ export function loadRules(yamlText: string): Rules {
     ignore: doc['ignore'] === undefined ? [] : strArray(doc, 'ignore'),
     ...(doc['steps'] === undefined ? {} : { steps: strArray(doc, 'steps') }),
     inspectorChildren: strListMap(doc, 'inspector_children'),
+    categories: strListMap(doc, 'categories'),
     shapes: enumMap(doc, 'shapes', SHAPES),
     kinds: enumMap(doc, 'kinds', KINDS),
     edges: edgeRules(doc),
@@ -304,5 +310,6 @@ export function loadRules(yamlText: string): Rules {
     durations: durations(doc),
     loops: loopRules(doc),
     convergenceThreshold: threshold,
+    showParamsOnCanvas,
   };
 }

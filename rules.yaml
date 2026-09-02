@@ -67,6 +67,40 @@ inspector_children:
   # is why the lookup searches descendants rather than direct children.
   UserInputBoolean: [Text]
 
+# Presentation-only grouping of element types, for the UI's Step Types filter
+# panel. Changes no graph semantics — purely how the type list is organised
+# on screen. An element not listed anywhere below falls under "Other" in the
+# UI rather than disappearing (invariant 7).
+categories:
+  General:
+    - Sequence
+    - Loop
+    - GoTo
+    - SetStatus
+  Control:
+    - SetSwitchState
+    - SetSetpoint
+    - SetEnum
+  Timing:
+    - WaitStep
+    - StartPeriodicLog
+    - StopPeriodicLog
+  Conditional:
+    - ConditionStep
+    - UserInputBoolean
+    - TestCriteriaEvaluation
+  Data Logging:
+    - StartLogging
+    - StopLogging
+    - RecordData
+  User Interaction:
+    - SelectOption
+    - PlayStatusTone
+  Calibration:
+    - ClearBaseline
+    - AcceptCalibration
+    - AcceptBaseline
+
 # Node shape by element type.
 shapes:
   ConditionStep:          diamond
@@ -189,3 +223,9 @@ loops:
 # Render a target once as a shared terminal, with dotted inbound edges, when
 # more than this many edges converge on it. See spec section 4.5.
 convergence_threshold: 3
+
+# Whether a leaf node's canvas box shows its `labels` text (the
+# "setpointTag = ..." line). Optional; absent means true. Off here — that
+# line reads as internal metadata, not something a reader following the flow
+# needs printed on the shape itself.
+show_params_on_canvas: false

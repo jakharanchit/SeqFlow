@@ -9,6 +9,7 @@
 import {
   Background,
   BackgroundVariant,
+  ControlButton,
   Controls,
   MiniMap,
   PanOnScrollMode,
@@ -84,6 +85,8 @@ export interface CanvasProps {
   layoutKey: number;
   /** Centre on this node. Null after a canvas click, which must not re-centre. */
   focus: FocusRequest | null;
+  showMinimap: boolean;
+  onShowMinimap: (on: boolean) => void;
 }
 
 export function Canvas({
@@ -95,6 +98,8 @@ export function Canvas({
   onToggle,
   layoutKey,
   focus,
+  showMinimap,
+  onShowMinimap,
 }: CanvasProps): React.JSX.Element {
   const flow = useReactFlow();
 
@@ -379,16 +384,30 @@ export function Canvas({
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#d8d8d8" />
         {/* The fit button uses the same computed fit, not React Flow's. */}
-        <Controls showInteractive={false} onFitView={fitAll} />
-        <MiniMap
-          pannable
-          zoomable
-          maskColor="rgba(0,0,0,0.08)"
-          nodeColor={(n) => {
-            const data = n.data as unknown as FlowNodeData;
-            return KIND_COLOR[data.kind] ?? EDGE_COLOR['fallthrough']!;
-          }}
-        />
+        <Controls showInteractive={false} onFitView={fitAll}>
+          <ControlButton
+            onClick={() => onShowMinimap(!showMinimap)}
+            title={showMinimap ? 'Hide the minimap' : 'Show the minimap'}
+            aria-pressed={showMinimap}
+            className={showMinimap ? 'minimap-toggle on' : 'minimap-toggle'}
+          >
+            <svg viewBox="0 0 32 32" aria-hidden="true">
+              <path d="M4 6h24v20H4zM6 8v16h22V8z" />
+              <rect x="17" y="15" width="9" height="8" />
+            </svg>
+          </ControlButton>
+        </Controls>
+        {showMinimap && (
+          <MiniMap
+            pannable
+            zoomable
+            maskColor="rgba(0,0,0,0.08)"
+            nodeColor={(n) => {
+              const data = n.data as unknown as FlowNodeData;
+              return KIND_COLOR[data.kind] ?? EDGE_COLOR['fallthrough']!;
+            }}
+          />
+        )}
       </ReactFlow>
       </RouteContext.Provider>
     </div>

@@ -52,12 +52,18 @@ function countTags(text: string, tag: string): number {
 describe('dimensions', () => {
   test('grouped matches the on-screen layout', () => {
     const svg = toSvg(grouped.nodes, grouped.edges, { routes: grouped.routes, padding: 0 });
-    // PHASE3-TASKS named 975 x 8886 for this fixture. It is 975 x 10356 since
-    // step numbers took a line inside every node box — the width is unchanged
-    // because `2.1.6.11` is narrower than every name it sits above, and the
-    // height is 107 leaves × the 14 px the line costs.
-    expect(svg.width).toBe(975);
-    expect(svg.height).toBe(10356);
+    // PHASE3-TASKS named 975 x 8886 for this fixture; it was 975 x 10356 once
+    // step numbers took a line inside every node box, then 884 x 10416 once
+    // `show_params_on_canvas: false` became the shipped default. It is
+    // 974 x 11666 now that every nested group's own `elk.padding` is set
+    // directly on that group's ElkNode, not just on the root's layoutOptions
+    // default — elkjs does not cascade `elk.padding` through hierarchy
+    // levels, so every container past the outermost was reserving only its
+    // 12px built-in default above its first child, not the 52px this app
+    // configures for a title bar. Every group is correspondingly taller
+    // (and, cascading, so is the whole diagram).
+    expect(svg.width).toBe(974);
+    expect(svg.height).toBe(11666);
 
     // That is the extent from ELK's origin, which is 22 px left and 52 px
     // above the topmost node — the outer group's padding. `graphBounds`

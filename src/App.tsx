@@ -13,35 +13,11 @@ import { ReactFlowProvider, applyNodeChanges, type NodeChange } from '@xyflow/re
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import rulesText from '../rules.yaml?raw';
-import { ParseError, indexElements, parse } from './core/parse';
-import { profile, unknowns, type SchemaProfile } from './core/profile';
+import { ParseError, parse } from './core/parse';
 import { RuleFileError, loadRules } from './core/rules';
-import type { Graph, Rules, SeqEdge, Warning } from './core/types';
+import type { Graph, Rules, Warning } from './core/types';
 import { ancestorUids } from './core/ancestry';
-import {
-  criteriaAhead,
-  criteriaTable,
-  failEdges,
-  nodesForCriterion,
-} from './core/criteria';
-import { diffGraphs, mergedGraph, summarise } from './core/diff';
-import {
-  durations,
-  offsets,
-  terminalCount,
-  type DurationReport,
-  type Offset,
-} from './core/duration';
-import { lint } from './core/lint';
-import { adjacency, firstLeafOf, pathSet } from './core/paths';
 import { elementCounts, isActive, matchSet, search } from './core/search';
-import {
-  noSignalNames,
-  parseSignalNames,
-  type SignalNameFile,
-} from './core/signalNames';
-import { nodesFor, signalIndex, signalRows } from './core/signals';
-import { compare, similarGroups } from './core/similarity';
 import { asGraph, autoCollapse, visibleGraph } from './emit/collapse';
 import {
   SidecarError,
@@ -59,8 +35,7 @@ import type { ExecStatus, StepStatusPayload } from './bridge/protocol';
 import { svgToPng } from './ui/raster';
 import { Canvas, type FocusRequest } from './ui/Canvas';
 import { Drawer, type DrawerTab } from './ui/Drawer';
-import { StepDetails } from './ui/Inspector';
-import { Outline, type OutlineTextSize } from './ui/Outline';
+import { Outline, type HideableColumn, type OutlineTextSize } from './ui/Outline';
 import { usePersistedState, useResizable } from './ui/useResizable';
 import './ui/styles.css';
 
@@ -74,29 +49,6 @@ const BUILT_IN_RULES = loadRules(rulesText);
 interface Loaded {
   graph: Graph;
   fileName: string;
-  snippets: Map<string, string>;
-  /**
-   * Every element name in the document against what the rule file knows.
-   * Computed from the XML rather than the graph, because the elements worth
-   * reporting are exactly the ones the graph does not contain.
-   */
-  profile: SchemaProfile;
-}
-
-/** Raw XML per node, for the inspector. Serialising is a UI concern. */
-function snippetsFor(xml: string, graph: Graph, rules: Rules): Map<string, string> {
-  const out = new Map<string, string>();
-  try {
-    const doc = new DOMParser().parseFromString(xml, 'application/xml');
-    const serializer = new XMLSerializer();
-    for (const [uid, el] of indexElements(doc, rules)) {
-      if (!graph.nodes.has(uid)) continue;
-      out.set(uid, serializer.serializeToString(el));
-    }
-  } catch {
-    // The inspector simply omits the snippet if serialisation fails.
-  }
-  return out;
 }
 
 const NO_COLLAPSE: ReadonlySet<string> = new Set();
@@ -115,19 +67,6 @@ const LAYOUT_BUDGET = 600;
 /** Distinct arrangements kept per file. A fold and its undo are two. */
 const LAYOUT_CACHE_LIMIT = 12;
 
-/** So the drawer's profile prop never goes optional before a file lands. */
-const EMPTY_PROFILE: SchemaProfile = new Map();
-
-/** Placeholders so the drawer's props never go optional before a file lands. */
-const EMPTY_COUNTS = {
-  ODD_SIBLING_ATTR: 0,
-  UNREACHABLE: 0,
-  MULTIPLE_TERMINALS: 0,
-  STALE_TARGET: 0,
-  DUPLICATE_NAME: 0,
-  EXTERNAL_CRITERIA: 0,
-} as const;
-
 /** Highest-attention execution status wins when lifting several onto one
  * folded sequence node — see `execLight` below. */
 const EXEC_PRIORITY: Record<ExecStatus, number> = {
@@ -136,22 +75,6 @@ const EXEC_PRIORITY: Record<ExecStatus, number> = {
   pending: 2,
   pass: 1,
   skipped: 0,
-};
-
-const EMPTY_DURATION: DurationReport = {
-  timed: false,
-  waitAttrs: [],
-  timeoutAttrs: [],
-  waitSteps: 0,
-  waitSeconds: 0,
-  pollingSteps: 0,
-  pollingSeconds: 0,
-  paths: 0,
-  cyclic: false,
-  nominal: { min: 0, max: 0 },
-  worst: { min: 0, max: 0 },
-  ratio: Infinity,
-  loops: [],
 };
 
 export function App(): React.JSX.Element {
@@ -206,32 +129,13 @@ export function App(): React.JSX.Element {
   const [pass, setPass] = useState(0);
   const [text, setText] = useState('');
   const [elements, setElements] = useState<ReadonlySet<string>>(NO_COLLAPSE);
-  const [trace, setTrace] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<DrawerTab>('view');
-  const [signal, setSignal] = useState<string | null>(null);
-  const [repeat, setRepeat] = useState(0);
-  /* Phase 4. */
-  const [finding, setFinding] = useState<number | null>(null);
-  const [criterion, setCriterion] = useState<string | null>(null);
-  const [failRoutes, setFailRoutes] = useState(false);
-  /** The earlier revision, when one has been dropped on the Diff tab. */
-  const [baseline, setBaseline] = useState<Loaded | null>(null);
-  const [diffRow, setDiffRow] = useState<string | null>(null);
-  /**
-   * The optional signal dictionary — human names for the tags. Empty until one
-   * is dropped, and an empty one means every tag shows exactly as the XML
-   * spells it. See `core/signalNames.ts` for why none is derived.
-   */
-  const [signalNames, setSignalNames] = useState<SignalNameFile>(noSignalNames);
-  const [signalNamesFile, setSignalNamesFile] = useState<string | null>(null);
   /**
    * Live per-step execution status, pushed in over the LabVIEW bridge as a
    * test runs — see `bridge/install.ts`. Empty until something calls
    * `setStepStatus`/`setStepStatuses`; a plain browser session never touches
-   * it. Kept apart from `highlight`/`diff` for the same reason those are kept
-   * apart from each other: "this step is running" and "this step is on the
-   * traced path" can both be true and both need to stay visible.
+   * it.
    */
   const [executionStatus, setExecutionStatus] = useState<ReadonlyMap<string, ExecStatus>>(
     new Map(),
@@ -241,21 +145,19 @@ export function App(): React.JSX.Element {
   /* LabVIEW-embedded shell: panel sizing, text size, flowchart toggle   */
   /* ---------------------------------------------------------------- */
 
-  /** The left panel's width. Max shrinks the canvas can never fully starve. */
+  /**
+   * The left panel's width. Max shrinks the canvas can never fully starve.
+   * Default and max are both larger than before the tree grew Description/Log
+   * Start/Log Completion columns — the tree needs the room; the canvas keeps
+   * filling whatever's left rather than claiming most of the window.
+   */
   const outlinePanel = useResizable(
     'seqflow.outlineWidth',
-    320,
+    640,
     180,
-    Math.min(720, window.innerWidth * 0.7),
+    Math.min(1100, window.innerWidth * 0.75),
     'horizontal',
   );
-  /**
-   * The split between the tree and the step-details section beneath it.
-   * `invert: true` because the details section sits *after* its handle
-   * (below it) — dragging the handle down should shrink it, the opposite of
-   * the outline panel's handle, which sits before the panel it resizes.
-   */
-  const detailsPanel = useResizable('seqflow.detailsHeight', 220, 80, 560, 'vertical', true);
   const [outlineTextSize, setOutlineTextSize] = usePersistedState<OutlineTextSize>(
     'seqflow.outlineTextSize',
     'M',
@@ -266,6 +168,38 @@ export function App(): React.JSX.Element {
     true,
     (raw) => raw === 'true',
     (v) => String(v),
+  );
+  const [showMinimap, setShowMinimap] = usePersistedState<boolean>(
+    'seqflow.showMinimap',
+    true,
+    (raw) => raw === 'true',
+    (v) => String(v),
+  );
+  /**
+   * Which of the tree's three optional columns are hidden — Step never joins
+   * this set, it is the tree. The toggle lives in the View tab (`Drawer.tsx`),
+   * so the set is owned here rather than inside `Outline.tsx` itself; the
+   * per-column *widths* stay local to `Outline.tsx` since nothing else reads
+   * them.
+   */
+  const [hiddenColumns, setHiddenColumns] = usePersistedState<ReadonlySet<HideableColumn>>(
+    'seqflow.outlineColsHidden',
+    new Set<HideableColumn>(),
+    (raw) =>
+      new Set(
+        raw
+          .split(',')
+          .filter((s): s is HideableColumn => s === 'desc' || s === 'logStart' || s === 'logCompletion'),
+      ),
+    (set) => [...set].join(','),
+  );
+  const toggleColumn = useCallback(
+    (column: HideableColumn): void => {
+      const next = new Set(hiddenColumns);
+      if (!next.delete(column)) next.add(column);
+      setHiddenColumns(next);
+    },
+    [hiddenColumns, setHiddenColumns],
   );
 
   // Guards against a slow layout from an earlier file or toggle landing after
@@ -314,32 +248,9 @@ export function App(): React.JSX.Element {
    * loaded this is still the *new* revision — the ghosts belong to the canvas,
    * not to the linter.
    */
+  /** What the canvas, outline and inspector show — the parsed file, plainly. */
   const subject = loaded?.graph ?? null;
-
-  /** Elements the rule file has no answer for — the Schema tab's badge. */
-  const schemaGaps = useMemo(
-    () => (loaded === null ? 0 : unknowns(loaded.profile).length),
-    [loaded],
-  );
-
-  const diff = useMemo(
-    () => (subject === null || baseline === null ? null : diffGraphs(baseline.graph, subject)),
-    [subject, baseline],
-  );
-
-  /**
-   * What the canvas, outline and inspector show. With no baseline that is the
-   * parsed file. With one it is the new revision plus the removed steps drawn
-   * back in where they were — a deletion has to be visible, and an absence is
-   * exactly what a reader cannot see.
-   */
-  const graph = useMemo(
-    () =>
-      subject === null || baseline === null || diff === null
-        ? subject
-        : mergedGraph(baseline.graph, subject, diff),
-    [subject, baseline, diff],
-  );
+  const graph = subject;
   graphRef.current = graph;
 
   /** The graph as the canvas currently shows it: collapsed sequences folded. */
@@ -365,119 +276,22 @@ export function App(): React.JSX.Element {
   }, [text, settled]);
 
   const query = useMemo(() => ({ text: settled, elements }), [settled, elements]);
-  const searching = isActive(query);
+  /**
+   * `filtering` is text OR an active type filter — it still gates `results`
+   * and the canvas's own dimming (`matches`, below), unchanged from before.
+   * `searching` is text alone: it is what decides whether the *outline*
+   * swaps its tree for the flat result list. A type-only filter dims
+   * non-matching rows in place in the tree instead (`Outline.tsx`), keeping
+   * its structure, rather than replacing it with a flat list — a typed query
+   * still combines with an active type filter exactly as before.
+   */
+  const filtering = isActive(query);
+  const searching = settled.trim() !== '';
   const results = useMemo(
-    () => (graph === null || !searching ? [] : search(graph, query)),
-    [graph, query, searching],
+    () => (graph === null || !filtering ? [] : search(graph, query)),
+    [graph, query, filtering],
   );
   const available = useMemo(() => (graph === null ? [] : elementCounts(graph)), [graph]);
-
-  /**
-   * False until the canvas has painted once for this file.
-   *
-   * The nine whole-file analyses below cost about 180 ms together on a
-   * 5 733-node graph — small beside ELK, and still 180 ms of blocked paint that
-   * buys nothing, because eight of them feed drawer tabs nobody has opened yet.
-   *
-   * Deferring them *until their tab opens* would empty the tab badges, which
-   * are the useful part of having them. Running them one frame late keeps every
-   * badge and unblocks the first frame, and a reader cannot reach the drawer in
-   * a frame.
-   */
-  const [analysed, setAnalysed] = useState(false);
-  useEffect(() => {
-    if (subject === null) {
-      setAnalysed(false);
-      return;
-    }
-    setAnalysed(false);
-    // A timer, not requestAnimationFrame. Frames do not run in a hidden or
-    // throttled tab, and an analysis gate that never opens there would leave
-    // every drawer tab permanently empty with nothing to say why.
-    const id = window.setTimeout(() => setAnalysed(true), 0);
-    return () => window.clearTimeout(id);
-  }, [subject]);
-
-  /** The subject once the first paint is done — null before it. */
-  const ready = analysed ? subject : null;
-
-  /**
-   * One edge index per graph, shared by every query that takes one. Each call
-   * site used to default-build its own, which meant two full rebuilds on every
-   * click — cheap at 126 edges and not at all cheap on a file ten times that.
-   */
-  const subjectAdj = useMemo(
-    () => (subject === null ? null : adjacency(subject)),
-    [subject],
-  );
-  const graphAdj = useMemo(() => (graph === null ? null : adjacency(graph)), [graph]);
-
-  /* Every analysis below is about the parsed file, so it reads `subject`. A
-     ghost is a step this revision does not have; counting its signals, timing
-     it, or linting it would be reporting on a file that is not the subject.
-
-     They read `ready` rather than `subject` so none of them runs in the commit
-     that first shows the file — see `analysed` above. */
-  const index = useMemo(
-    () => (ready === null ? new Map<string, never[]>() : signalIndex(ready, ruleSet.rules)),
-    [ready, ruleSet.rules],
-  );
-  const signals = useMemo(() => signalRows(index), [index]);
-
-  /**
-   * Structurally identical sibling sequences. On the fixture this is one group:
-   * the four Pulses, 112 of the 133 nodes, differing in eight attributes.
-   */
-  const repeats = useMemo(() => (ready === null ? [] : similarGroups(ready)), [ready]);
-  const comparison = useMemo(() => {
-    const group = repeats[repeat];
-    if (subject === null || group === undefined) return null;
-    return compare(subject, group.members);
-  }, [subject, repeats, repeat]);
-
-  /* ---------------------------------------------------------------- */
-  /* Phase 4 analysis                                                   */
-  /* ---------------------------------------------------------------- */
-
-  const findings = useMemo(
-    () =>
-      ready === null
-        ? { findings: [], counts: EMPTY_COUNTS, siblings: [] }
-        : lint(ready, ruleSet.rules),
-    [ready, ruleSet.rules],
-  );
-
-  const criteria = useMemo(
-    () => (ready === null ? [] : criteriaTable(ready, ruleSet.rules)),
-    [ready, ruleSet.rules],
-  );
-
-  const abortRoutes = useMemo(
-    () => (ready === null ? null : failEdges(ready)),
-    [ready],
-  );
-
-  const duration = useMemo(
-    () => (ready === null ? EMPTY_DURATION : durations(ready, ruleSet.rules, subjectAdj ?? undefined)),
-    [ready, subjectAdj, ruleSet.rules],
-  );
-
-  const stepOffsets = useMemo(
-    () => (ready === null ? new Map<string, Offset>() : offsets(ready, ruleSet.rules, subjectAdj ?? undefined)),
-    [ready, subjectAdj, ruleSet.rules],
-  );
-
-  const terminals = useMemo(
-    () => (ready === null ? 0 : terminalCount(ready, subjectAdj ?? undefined)),
-    [ready, subjectAdj],
-  );
-
-  /** Which criteria still lie in front of the selected step. */
-  const ahead = useMemo(() => {
-    if (subject === null || subjectAdj === null) return null;
-    if (selected === null || !subject.nodes.has(selected)) return null;
-    return criteriaAhead(subject, selected, criteria, subjectAdj);
-  }, [subject, subjectAdj, selected, criteria]);
 
   /**
    * ELK results for this file, keyed by what determines one.
@@ -561,7 +375,7 @@ export function App(): React.JSX.Element {
                 message: `layout file: ${restored.unknown.length} saved position${restored.unknown.length === 1 ? ' is' : 's are'} for steps this sequence no longer has, and ${restored.unknown.length === 1 ? 'was' : 'were'} dropped. ${restored.placed} restored.`,
               },
             ]);
-            setSettingsTab('warnings');
+            setSettingsTab('view');
             setSettingsOpen(true);
           }
           setSidecar(null);
@@ -602,13 +416,7 @@ export function App(): React.JSX.Element {
     sourceRef.current = { xml, fileName };
     try {
       const parsed = parse(xml, { rules, domParser: new DOMParser() });
-      const doc = new DOMParser().parseFromString(xml, 'application/xml');
-      setLoaded({
-        graph: parsed,
-        fileName,
-        snippets: snippetsFor(xml, parsed, rules),
-        profile: profile(doc, rules),
-      });
+      setLoaded({ graph: parsed, fileName });
       // A large file opens folded. The alternative is a ten-second freeze on
       // arrival, and the reader has not yet said which part they want. Empty
       // for anything under the budget, so the usual case is untouched.
@@ -618,15 +426,6 @@ export function App(): React.JSX.Element {
       setWarnings(parsed.warnings);
       setSelected(null);
       setFocus(null);
-      setSignal(null);
-      setRepeat(0);
-      setFinding(null);
-      setCriterion(null);
-      setFailRoutes(false);
-      setDiffRow(null);
-      // A baseline is a comparison against *this* file. Loading a different
-      // one leaves it comparing two files the reader never asked about.
-      setBaseline(null);
       // A running status belongs to a test run against *this* file. A new
       // load — even a re-drop of the same file — has to be read as "nothing
       // has run yet", not as the previous run's steps still lit.
@@ -634,7 +433,7 @@ export function App(): React.JSX.Element {
       // A warning has to be seen. The drawer opens itself rather than relying
       // on a banner the reader can dismiss and never look at again.
       if (parsed.warnings.length > 0) {
-        setSettingsTab('warnings');
+        setSettingsTab('view');
         setSettingsOpen(true);
       }
     } catch (err) {
@@ -679,7 +478,7 @@ export function App(): React.JSX.Element {
     const source = sourceRef.current;
     if (source === null) {
       setError(null);
-      setSettingsTab('schema');
+      setSettingsTab('view');
       setSettingsOpen(true);
       return;
     }
@@ -718,65 +517,6 @@ export function App(): React.JSX.Element {
     [],
   );
 
-  /**
-   * An earlier revision, dropped on the Diff tab — spec 7.7.
-   *
-   * The canvas keeps showing the loaded file; this one only supplies the
-   * ghosts. Parsed with the same rules and the same parser, so a revision that
-   * does not parse fails here the way it would on the page.
-   */
-  const loadBaseline = useCallback((xml: string, name: string): void => {
-    const rules = ruleSetRef.current.rules;
-    try {
-      const parsed = parse(xml, { rules, domParser: new DOMParser() });
-      setBaseline({
-        graph: parsed,
-        fileName: name,
-        snippets: snippetsFor(xml, parsed, rules),
-        profile: profile(new DOMParser().parseFromString(xml, 'application/xml'), rules),
-      });
-      setDiffRow(null);
-      setError(null);
-    } catch (err) {
-      const message =
-        err instanceof ParseError || err instanceof Error
-          ? err.message
-          : 'could not read that file';
-      setError(`${name}: ${message}`);
-      setDismissed(false);
-    }
-  }, []);
-
-  /**
-   * A signal dictionary — two columns, tag then human name. Dropped like
-   * everything else; the extension routes it. It changes nothing but the
-   * words on screen, so it deliberately does not reset the selection, the
-   * collapse set or the layout.
-   */
-  const loadSignalNames = useCallback((text: string, name: string): void => {
-    const parsed = parseSignalNames(text);
-    if (parsed.size === 0) {
-      setError(`${name}: no tag,name rows in that file`);
-      setDismissed(false);
-      return;
-    }
-    setSignalNames(parsed);
-    setSignalNamesFile(name);
-    setError(null);
-    setSettingsTab('signals');
-    setSettingsOpen(true);
-  }, []);
-
-  const clearSignalNames = useCallback((): void => {
-    setSignalNames(noSignalNames());
-    setSignalNamesFile(null);
-  }, []);
-
-  const clearBaseline = useCallback((): void => {
-    setBaseline(null);
-    setDiffRow(null);
-  }, []);
-
   /* Drag and drop, anywhere on the page. */
   useEffect(() => {
     const over = (e: DragEvent): void => {
@@ -798,7 +538,6 @@ export function App(): React.JSX.Element {
         // is what tells them apart, and a mislabelled one fails loudly rather
         // than being fed to the XML parser.
         if (/\.json$/i.test(file.name)) loadLayout(text, file.name);
-        else if (/\.(csv|tsv)$/i.test(file.name)) loadSignalNames(text, file.name);
         else if (/\.ya?ml$/i.test(file.name)) loadRuleFile(text, file.name);
         else load(text, file.name);
       };
@@ -814,7 +553,7 @@ export function App(): React.JSX.Element {
       window.removeEventListener('dragleave', leave);
       window.removeEventListener('drop', drop);
     };
-  }, [load, loadLayout, loadRuleFile, loadSignalNames]);
+  }, [load, loadLayout, loadRuleFile]);
 
   /**
    * Select, expand whatever is hiding it, and bring it into view. A search hit
@@ -979,12 +718,8 @@ export function App(): React.JSX.Element {
     const installed = installBridge({
       loadXml: load,
       loadRuleFile,
-      loadSignalNames,
       loadLayout,
-      loadBaseline,
       clearRuleFile,
-      clearSignalNames,
-      clearBaseline,
       selectStep: bridgeSelectStep,
       setStepStatus: bridgeSetStepStatus,
       setStepStatuses: bridgeSetStepStatuses,
@@ -1002,12 +737,8 @@ export function App(): React.JSX.Element {
   }, [
     load,
     loadRuleFile,
-    loadSignalNames,
     loadLayout,
-    loadBaseline,
     clearRuleFile,
-    clearSignalNames,
-    clearBaseline,
     bridgeSelectStep,
     bridgeSetStepStatus,
     bridgeSetStepStatuses,
@@ -1038,89 +769,13 @@ export function App(): React.JSX.Element {
     bridgeRef.current?.enqueue('loadError', { message: error });
   }, [error]);
 
-  /**
-   * Path highlighting — spec 7.3. Computed on the *full* graph and then lifted
-   * through the collapse view, so the highlight survives a collapse toggle: the
-   * 16 criteria steps that reach the abort still light up their Pulse when the
-   * Pulse is folded shut.
-   */
-  const highlight = useMemo(() => {
-    if (graph === null || view === null || selected === null || !trace) return null;
-
-    // A container carries no flow, so tracing one returns nothing and dims all
-    // 107 leaves. Trace where the flow actually enters it instead. The
-    // container stays selected; only the subject of the walk differs.
-    const from = firstLeafOf(graph, selected);
-    if (from === null) return null;
-
-    const set = pathSet(graph, from, graphAdj ?? undefined);
-    const lift = (uid: string): string => view.lifted.get(uid) ?? uid;
-    const liftNodes = (uids: Iterable<string>): Set<string> =>
-      new Set([...uids].map(lift));
-    // A lifted edge whose ends collapse to the same node is an edge *inside* a
-    // folded sequence: it says nothing on the canvas and would draw a self-loop.
-    const liftEdges = (edges: readonly SeqEdge[]): Set<string> =>
-      new Set(
-        edges
-          .map((e) => [lift(e.src), e.reason, lift(e.dst)] as const)
-          .filter(([src, , dst]) => src !== dst)
-          .map(([src, reason, dst]) => `${src}|${reason}|${dst}`),
-      );
-
-    return {
-      subject: lift(from),
-      nodes: new Set([lift(selected), lift(from), ...liftNodes(set.nodes)]),
-      edges: liftEdges(set.edges),
-      // Kept apart so the canvas can say "before" and "after" rather than one
-      // undifferentiated blob — on a linear sequence the union is the whole
-      // file and tells the reader nothing.
-      upNodes: liftNodes(set.up.nodes),
-      downNodes: liftNodes(set.down.nodes),
-      upEdges: liftEdges(set.up.edges),
-      downEdges: liftEdges(set.down.edges),
-    };
-  }, [graph, graphAdj, view, selected, trace]);
-
-  /** Search matches, lifted the same way so a hit inside a fold still reads. */
+  /** Search matches, lifted the same way a highlight always was, so a hit
+   * inside a fold still reads. */
   const matches = useMemo(() => {
-    if (view === null || !searching) return null;
+    if (view === null || !filtering) return null;
     const raw = matchSet(results);
     return new Set([...raw].map((uid) => view.lifted.get(uid) ?? uid));
-  }, [view, searching, results]);
-
-  /** The steps touching the signal picked in the drawer. */
-  const spotlight = useMemo(() => {
-    if (view === null || signal === null) return null;
-    return new Set([...nodesFor(index, signal)].map((uid) => view.lifted.get(uid) ?? uid));
-  }, [view, signal, index]);
-
-  /** The four steps applying the criterion picked in the drawer. */
-  const criterionLight = useMemo(() => {
-    if (view === null || criterion === null) return null;
-    return new Set(
-      [...nodesForCriterion(criteria, criterion)].map((uid) => view.lifted.get(uid) ?? uid),
-    );
-  }, [view, criterion, criteria]);
-
-  /**
-   * The 16 fail routes as one set — Phase 4 task 4. Lifted through the collapse
-   * view the same way path highlighting is, so folding the Pulses keeps it.
-   */
-  const failLight = useMemo(() => {
-    if (view === null || abortRoutes === null || !failRoutes) return null;
-    const lift = (uid: string): string => view.lifted.get(uid) ?? uid;
-    return {
-      nodes: new Set([...abortRoutes.nodes].map(lift)),
-      edges: new Set(
-        abortRoutes.edges
-          .map((e) => `${lift(e.src)}|${e.reason}|${lift(e.dst)}`)
-          .filter((key) => {
-            const [src, , dst] = key.split('|');
-            return src !== dst;
-          }),
-      ),
-    };
-  }, [view, abortRoutes, failRoutes]);
+  }, [view, filtering, results]);
 
   /**
    * Live execution status, lifted through the collapse view the same way
@@ -1152,123 +807,34 @@ export function App(): React.JSX.Element {
     () =>
       nodes.map((n) => {
         // Group boxes are scaffolding, not steps: they never carry flow, so
-        // they are never "on a path" and dimming them would delete exactly the
-        // context that makes a highlight readable. A *collapsed* sequence is a
-        // seqNode, not a group, and dims and highlights like any other node.
+        // dimming them would delete exactly the context that makes a search
+        // highlight readable. A *collapsed* sequence is a seqNode, not a
+        // group, and dims like any other node.
         const isGroup = n.type === 'seqGroup';
-        const dim =
-          !isGroup &&
-          ((matches !== null && !matches.has(n.id)) ||
-            (spotlight !== null && !spotlight.has(n.id)) ||
-            (criterionLight !== null && !criterionLight.has(n.id)) ||
-            (failLight !== null && !failLight.nodes.has(n.id)) ||
-            (highlight !== null && !highlight.nodes.has(n.id)));
-        const onPath =
-          !isGroup &&
-          ((highlight !== null && highlight.nodes.has(n.id)) ||
-            (failLight !== null && failLight.nodes.has(n.id)));
-        // Which side of the selected step it sits on. A node can be both, when
-        // a jump makes a genuine loop, and then it gets neither: "before and
-        // after" is what the union class already says.
-        const up = !isGroup && highlight !== null && highlight.upNodes.has(n.id);
-        const down = !isGroup && highlight !== null && highlight.downNodes.has(n.id);
-        const direction =
-          highlight === null || n.id === highlight.subject
-            ? ''
-            : up && !down
-              ? 'path-up'
-              : down && !up
-                ? 'path-down'
-                : '';
-        // Diff classes are not a highlight: they say what happened to the step,
-        // and a dimmed ghost is still a ghost. Both may apply at once.
-        const change = diff === null ? undefined : diff.status.get(n.id);
-        // Execution status is not a highlight either — it says what LabVIEW
-        // reported for the step, independent of whether it is dimmed, on a
-        // traced path, or a diff ghost. All three can be true together.
+        const dim = !isGroup && matches !== null && !matches.has(n.id);
+        // Execution status says what LabVIEW reported for the step,
+        // independent of whether it is dimmed.
         const exec = isGroup ? undefined : execLight?.get(n.id);
-        const className = [
-          dim ? 'dimmed' : '',
-          onPath ? 'on-path' : '',
-          direction,
-          change === undefined || change === 'same' ? '' : `diff-${change}`,
-          exec === undefined ? '' : `exec-${exec}`,
-        ]
+        const className = [dim ? 'dimmed' : '', exec === undefined ? '' : `exec-${exec}`]
           .filter(Boolean)
           .join(' ');
         const isSelected = n.id === selected;
         if (n.selected === isSelected && (n.className ?? '') === className) return n;
         return { ...n, selected: isSelected, className };
       }),
-    [nodes, selected, matches, spotlight, criterionLight, failLight, highlight, diff, execLight],
+    [nodes, selected, matches, execLight],
   );
 
   const renderEdges = useMemo(
     () =>
       edges.map((e) => {
-        const key = `${e.source}|${String(e.data.reason)}|${e.target}`;
-        const onPath =
-          (highlight !== null && highlight.edges.has(key)) ||
-          (failLight !== null && failLight.edges.has(key));
-        const up = highlight !== null && highlight.upEdges.has(key);
-        const down = highlight !== null && highlight.downEdges.has(key);
-        const direction = up && !down ? 'path-up' : down && !up ? 'path-down' : '';
-        const dim =
-          (highlight !== null && !highlight.edges.has(key)) ||
-          (failLight !== null && !failLight.edges.has(key)) ||
-          (matches !== null && !(matches.has(e.source) && matches.has(e.target))) ||
-          (spotlight !== null && !(spotlight.has(e.source) && spotlight.has(e.target))) ||
-          (criterionLight !== null &&
-            !(criterionLight.has(e.source) && criterionLight.has(e.target)));
-        const ghost =
-          diff !== null &&
-          (diff.status.get(e.source) === 'removed' || diff.status.get(e.target) === 'removed');
-        const className = [
-          dim ? 'dimmed' : '',
-          onPath ? 'on-path' : '',
-          direction,
-          ghost ? 'diff-removed' : '',
-        ]
-          .filter(Boolean)
-          .join(' ');
-
-        // The stroke is set here, not in a stylesheet.
-        //
-        // `toFlow` writes stroke and width as an *inline* style, and an inline
-        // declaration beats any rule a class can carry — so every highlight
-        // rule for an edge lost silently, including the on-path thickening that
-        // has been in styles.css since Phase 2 and never once applied. The UI
-        // owns highlighting, so the UI computes the final stroke; the emitter
-        // still supplies the colour an unhighlighted edge gets by reason.
-        //
-        // The colours stay in the stylesheet as custom properties, so the two
-        // path directions are defined in exactly one place.
-        const stroke =
-          direction === 'path-up'
-            ? 'var(--path-up)'
-            : direction === 'path-down'
-              ? 'var(--path-down)'
-              : onPath
-                ? 'var(--accent)'
-                : e.style.stroke;
-        const width = onPath ? 2.4 : e.style.strokeWidth;
-        const restyled =
-          stroke === e.style.stroke && width === e.style.strokeWidth
-            ? e.style
-            : { ...e.style, stroke, strokeWidth: width };
-
-        if ((e.className ?? '') === className && restyled === e.style) return e;
-        return { ...e, className, style: restyled };
+        const dim = matches !== null && !(matches.has(e.source) && matches.has(e.target));
+        const className = dim ? 'dimmed' : '';
+        if ((e.className ?? '') === className) return e;
+        return { ...e, className };
       }),
-    [edges, matches, spotlight, criterionLight, failLight, highlight, diff],
+    [edges, matches],
   );
-
-  /** A ghost's XML comes from the earlier revision; nothing else does. */
-  const snippets = useMemo(() => {
-    if (loaded === null) return new Map<string, string>();
-    if (baseline === null) return loaded.snippets;
-    return new Map([...baseline.snippets, ...loaded.snippets]);
-  }, [loaded, baseline]);
 
   edgesRef.current = edges;
   renderNodesRef.current = renderNodes;
@@ -1289,11 +855,14 @@ export function App(): React.JSX.Element {
     edgeCount: edges.length,
     elapsedMs,
     autoFolded,
-    diffSummary: diff === null ? null : summarise(diff),
-    trace,
-    onTrace: () => setTrace((t) => !t),
     onRelayout: relayout,
     busy,
+    rulesFile: ruleSet.file,
+    onClearRules: clearRuleFile,
+    showMinimap,
+    onShowMinimap: setShowMinimap,
+    hiddenColumns,
+    onToggleColumn: toggleColumn,
   };
 
   return (
@@ -1340,40 +909,15 @@ export function App(): React.JSX.Element {
                 elements={elements}
                 onElementsChange={setElements}
                 available={available}
+                categories={ruleSet.rules.categories}
                 results={results}
                 searching={searching}
                 textSize={outlineTextSize}
                 onTextSizeChange={setOutlineTextSize}
+                hiddenColumns={hiddenColumns}
               />
             )}
           </div>
-
-          {graph !== null && (
-            <>
-              <div
-                className="split-handle"
-                onPointerDown={detailsPanel.onHandleDown}
-                onDoubleClick={detailsPanel.reset}
-                role="separator"
-                aria-orientation="horizontal"
-                title="Drag to resize — double-click to reset"
-              />
-              <div className="details-section" style={{ height: detailsPanel.size }}>
-                <StepDetails
-                  graph={graph}
-                  selected={selected}
-                  snippets={snippets}
-                  onSelect={reveal}
-                  ahead={ahead}
-                  offset={selected === null ? null : (stepOffsets.get(selected) ?? null)}
-                  change={
-                    selected === null || diff === null ? null : (diff.status.get(selected) ?? null)
-                  }
-                  signalNames={signalNames.names}
-                />
-              </div>
-            </>
-          )}
         </section>
 
         {flowchartVisible && (
@@ -1410,6 +954,8 @@ export function App(): React.JSX.Element {
                 onToggle={toggle}
                 layoutKey={layoutKey}
                 focus={focus}
+                showMinimap={showMinimap}
+                onShowMinimap={setShowMinimap}
               />
             </ReactFlowProvider>
           )}
@@ -1431,53 +977,19 @@ export function App(): React.JSX.Element {
       <Drawer
         graph={graph}
         view={viewInfo}
-        signalNames={signalNames}
-        signalNamesFile={signalNamesFile}
-        onClearSignalNames={clearSignalNames}
-        profile={loaded?.profile ?? EMPTY_PROFILE}
-        schemaGaps={schemaGaps}
-        rulesFile={ruleSet.file}
-        onClearRules={clearRuleFile}
         rules={ruleSet.rules}
         fileName={loaded?.fileName ?? 'sequence.xml'}
         nodes={renderNodes}
         edges={renderEdges}
         routes={routes}
-        highlighted={highlight !== null || matches !== null || spotlight !== null}
+        highlighted={matches !== null}
         collapsed={collapsed}
-        index={index}
-        rows={signals}
         warnings={warnings}
-        repeats={repeats}
-        comparison={comparison}
-        repeat={repeat}
-        onRepeat={setRepeat}
-        lint={findings}
-        finding={finding}
-        onFinding={setFinding}
-        criteria={criteria}
-        criterion={criterion}
-        onCriterion={setCriterion}
-        failRoutes={failRoutes}
-        onFailRoutes={setFailRoutes}
-        failCount={abortRoutes?.edges.length ?? 0}
-        ahead={ahead}
-        duration={duration}
-        offset={selected === null ? null : (stepOffsets.get(selected) ?? null)}
-        terminals={terminals}
-        diff={diff}
-        baselineName={baseline?.fileName ?? null}
-        onBaseline={loadBaseline}
-        onClearBaseline={clearBaseline}
-        diffRow={diffRow}
-        onDiffRow={setDiffRow}
         open={settingsOpen}
         tab={settingsTab}
-        signal={signal}
         selected={selected}
         onTab={setSettingsTab}
         onOpen={setSettingsOpen}
-        onSignal={setSignal}
         onSelect={reveal}
       />
     </div>

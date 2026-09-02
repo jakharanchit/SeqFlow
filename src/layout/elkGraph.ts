@@ -46,6 +46,24 @@ export interface ElkLike {
 }
 
 /**
+ * Space reserved inside a group for its own title bar — `SIZE.groupHeader`
+ * (the title) plus `SIZE.groupPadding` (margin on every other side).
+ *
+ * Set below both on the *root* `layoutOptions` (which is what gives the whole
+ * diagram its own outer margin — the root's `elk.padding` governs the padding
+ * the root itself reserves for its direct children, the top-level sequences)
+ * and, in `toElk`, directly on every individual group `ElkNode`. Both are
+ * required: a `layoutOptions` default set at the root does **not** cascade
+ * down through nested hierarchy levels in elkjs — confirmed by measuring a
+ * real layout, where a group two levels deep placed its first child only
+ * 12px from its own top edge (ELK's own built-in default padding,
+ * `[top=12,left=12,bottom=12,right=12]`) rather than the 52px this app
+ * configures for a title bar. Setting it per-node in `toElk` is what makes
+ * nesting depth stop mattering.
+ */
+const GROUP_PADDING = `[top=${SIZE.groupHeader + SIZE.groupPadding},left=${SIZE.groupPadding},bottom=${SIZE.groupPadding},right=${SIZE.groupPadding}]`;
+
+/**
  * Layered, top-down. `INCLUDE_CHILDREN` is the setting that matters: without
  * it ELK lays each container out in isolation and the cross-container edges —
  * every jump in the file — are routed as an afterthought.
@@ -64,7 +82,7 @@ export const LAYOUT_OPTIONS: Record<string, string> = {
   // Orthogonal routing reads as a wiring diagram, which is what this is.
   'elk.edgeRouting': 'ORTHOGONAL',
   'elk.layered.mergeEdges': 'true',
-  'elk.padding': `[top=${SIZE.groupHeader + SIZE.groupPadding},left=${SIZE.groupPadding},bottom=${SIZE.groupPadding},right=${SIZE.groupPadding}]`,
+  'elk.padding': GROUP_PADDING,
 };
 
 /** Build the ELK request from flow nodes and edges. */
@@ -77,7 +95,7 @@ export function toElk(nodes: readonly FlowNode[], edges: readonly FlowEdge[]): E
   for (const n of nodes) {
     const isGroup = n.type === 'seqGroup';
     const elk: ElkNode = isGroup
-      ? { id: n.id, children: [] }
+      ? { id: n.id, children: [], layoutOptions: { 'elk.padding': GROUP_PADDING } }
       : { id: n.id, width: n.width, height: n.height };
 
     elkById.set(n.id, elk);
