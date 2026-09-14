@@ -61,9 +61,16 @@ describe('dimensions', () => {
     // levels, so every container past the outermost was reserving only its
     // 12px built-in default above its first child, not the 52px this app
     // configures for a title bar. Every group is correspondingly taller
-    // (and, cascading, so is the whole diagram).
-    expect(svg.width).toBe(974);
-    expect(svg.height).toBe(11666);
+    // (and, cascading, so is the whole diagram). It is wider again now that
+    // every diamond's edges are pinned to its apexes (`apexPorts` in
+    // layout/elkGraph.ts) and its second exit leaves by the east one: that
+    // exit needs a lane down the side of the pulse it branches out of, which
+    // is where the extra width goes. Taken deliberately — the vertical axis
+    // is 11 000px either way, and a decision that visibly branches *at the
+    // diamond* is worth 190px of a horizontal axis nothing else is using.
+    // Height moved by 40px in the same change and no more.
+    expect(svg.width).toBe(1143);
+    expect(svg.height).toBe(11706);
 
     // That is the extent from ELK's origin, which is 22 px left and 52 px
     // above the topmost node — the outer group's padding. `graphBounds`

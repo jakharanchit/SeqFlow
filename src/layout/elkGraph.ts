@@ -19,6 +19,16 @@ export interface ElkNode {
   y?: number;
   children?: ElkNode[];
   edges?: ElkEdge[];
+  ports?: ElkPort[];
+  layoutOptions?: Record<string, string>;
+}
+
+export interface ElkPort {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
   layoutOptions?: Record<string, string>;
 }
 
@@ -91,6 +101,60 @@ export const LAYOUT_OPTIONS: Record<string, string> = {
   'elk.padding': GROUP_PADDING,
 };
 
+/**
+ * A diamond is inscribed in its box, so the only points it has on any edge of
+ * that box are its four apexes. Left to itself ELK spreads a node's attach
+ * points along the full width of the top and bottom edges — measured on the
+ * fixture, a `ConditionStep`'s two branch exits left the bottom edge 28.5px
+ * either side of centre, which on a diamond is empty space: each line started
+ * in the notch beside the shape and read as detached from it.
+ *
+ * So a diamond gets four explicit ports, one per apex, and every edge touching
+ * it is attached to one of them. `FIXED_POS` is what makes ELK honour the
+ * coordinates rather than treat them as a hint.
+ *
+ * **The exits are spread across apexes rather than stacked on one.** Both
+ * leaving the south apex is geometrically correct and still reads badly: the
+ * two lines overlap until the router pulls them apart, so at the diamond
+ * itself a decision looks like a single exit that forks somewhere below. One
+ * exit down and the next out the side is the convention every flowchart uses,
+ * and it says "this is a branch" at the shape rather than a rank later.
+ *
+ * The assignment is by position in the edge list, never by label: which exit
+ * means what is rule-file content (invariant 2), and the edge order is already
+ * deterministic — `parse` sorts on `(src, reason, dst)` and `collapse` re-sorts
+ * on the same key, which is what invariant 6 rests on. So the first exit takes
+ * south, the second east, the third west, and a fourth or later falls back to
+ * south, where ELK's own spreading takes over again.
+ *
+ * Only the diamond needs any of this. A rect attaches across its whole edge,
+ * and a hexagon's top and bottom run from 12% to 88% of its width — wide
+ * enough that ELK's own spread stays on the shape.
+ */
+const APEX_PORTS = { 'elk.portConstraints': 'FIXED_POS' } as const;
+
+/** South, then east, then west: the order exits are handed out in. */
+const EXIT_SIDES = ['s', 'e', 'w'] as const;
+
+const apexPort = (id: string, side: string): string => `${id}::apex-${side}`;
+
+function apexPorts(id: string, width: number, height: number): ElkPort[] {
+  const at = (side: string, x: number, y: number, elkSide: string): ElkPort => ({
+    id: apexPort(id, side),
+    x,
+    y,
+    width: 0,
+    height: 0,
+    layoutOptions: { 'elk.port.side': elkSide },
+  });
+  return [
+    at('n', width / 2, 0, 'NORTH'),
+    at('s', width / 2, height, 'SOUTH'),
+    at('e', width, height / 2, 'EAST'),
+    at('w', 0, height / 2, 'WEST'),
+  ];
+}
+
 /** Build the ELK request from flow nodes and edges. */
 export function toElk(nodes: readonly FlowNode[], edges: readonly FlowEdge[]): ElkNode {
   const elkById = new Map<string, ElkNode>();
@@ -98,11 +162,19 @@ export function toElk(nodes: readonly FlowNode[], edges: readonly FlowEdge[]): E
 
   // Nodes arrive parent-first (toFlow sorts by depth), so a parent always
   // exists by the time its children are attached.
+  const apexed = new Set<string>();
+
   for (const n of nodes) {
     const isGroup = n.type === 'seqGroup';
     const elk: ElkNode = isGroup
       ? { id: n.id, children: [], layoutOptions: { 'elk.padding': GROUP_PADDING } }
       : { id: n.id, width: n.width, height: n.height };
+
+    if (!isGroup && n.data.shape === 'diamond') {
+      elk.ports = apexPorts(n.id, n.width, n.height);
+      elk.layoutOptions = { ...APEX_PORTS };
+      apexed.add(n.id);
+    }
 
     elkById.set(n.id, elk);
     const parent = n.parentId === undefined ? undefined : elkById.get(n.parentId);
@@ -123,13 +195,28 @@ export function toElk(nodes: readonly FlowNode[], edges: readonly FlowEdge[]): E
     }
   }
 
+  /**
+   * Which apex this diamond's next exit leaves by. Counted as the edge list is
+   * walked, so the assignment follows the list's own deterministic order.
+   */
+  const exitsSoFar = new Map<string, number>();
+  const exitSide = (id: string): string => {
+    const n = exitsSoFar.get(id) ?? 0;
+    exitsSoFar.set(id, n + 1);
+    return EXIT_SIDES[n] ?? 's';
+  };
+
   return {
     id: 'root',
     layoutOptions: LAYOUT_OPTIONS,
     children: roots,
     // With INCLUDE_CHILDREN, edges declared on the root may cross container
     // boundaries freely.
-    edges: edges.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),
+    edges: edges.map((e) => ({
+      id: e.id,
+      sources: [apexed.has(e.source) ? apexPort(e.source, exitSide(e.source)) : e.source],
+      targets: [apexed.has(e.target) ? apexPort(e.target, 'n') : e.target],
+    })),
   };
 }
 
@@ -214,7 +301,16 @@ export function edgeRoutes(result: ElkNode): Map<string, Point[]> {
   const absolute = new Map<string, Point>([[result.id, { x: 0, y: 0 }]]);
   const parentOf = new Map<string, string>();
 
+  /**
+   * An edge that ends on a diamond names one of its apex ports, not the node
+   * (see `apexPorts`). The LCA walk below is over nodes, so a port id has to
+   * resolve to the node that owns it or the edge falls back to the root frame
+   * and lands wherever the outermost group is not.
+   */
+  const ownerOfPort = new Map<string, string>();
+
   const walkNodes = (node: ElkNode, x: number, y: number): void => {
+    for (const port of node.ports ?? []) ownerOfPort.set(port.id, node.id);
     for (const child of node.children ?? []) {
       const cx = x + (child.x ?? 0);
       const cy = y + (child.y ?? 0);
@@ -252,8 +348,10 @@ export function edgeRoutes(result: ElkNode): Map<string, Point[]> {
   const out = new Map<string, Point[]>();
   const walkEdges = (node: ElkNode): void => {
     for (const edge of node.edges ?? []) {
-      const src = edge.sources[0];
-      const dst = edge.targets[0];
+      const rawSrc = edge.sources[0];
+      const rawDst = edge.targets[0];
+      const src = rawSrc === undefined ? undefined : (ownerOfPort.get(rawSrc) ?? rawSrc);
+      const dst = rawDst === undefined ? undefined : (ownerOfPort.get(rawDst) ?? rawDst);
       const off = src === undefined || dst === undefined ? { x: 0, y: 0 } : origin(src, dst);
       const points: Point[] = [];
       for (const section of edge.sections ?? []) {
