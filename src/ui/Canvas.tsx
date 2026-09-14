@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { EDGE_COLOR, type FlowEdge, type FlowNode, type FlowNodeData } from '../emit/flow';
 import { fitZoom, graphBounds, type Point } from '../layout/elkGraph';
+import { Icon } from './Icon';
 import { RouteContext, edgeTypes } from './edges';
 import { nodeTypes } from './nodes';
 
@@ -83,6 +84,16 @@ export interface CanvasProps {
   onToggle: (uid: string) => void;
   /** Bumped whenever a fresh layout lands, to refit the view. */
   layoutKey: number;
+  /**
+   * Anything whose change should re-fit the viewport without re-laying out —
+   * today, the view mode. Going from flowchart-only back to both halves this
+   * pane's width, and a fit computed for the wider one leaves the diagram
+   * centred off the right-hand edge: a blank canvas, the failure `fitAll`
+   * exists to catch. A *resize* deliberately does not refit — dragging the
+   * seam would fight the reader's zoom on every pixel — so it is the mode
+   * change, not the size change, that is the signal.
+   */
+  refitOn: string;
   /** Centre on this node. Null after a canvas click, which must not re-centre. */
   focus: FocusRequest | null;
   showMinimap: boolean;
@@ -97,6 +108,7 @@ export function Canvas({
   onSelect,
   onToggle,
   layoutKey,
+  refitOn,
   focus,
   showMinimap,
   onShowMinimap,
@@ -257,7 +269,7 @@ export function Canvas({
     };
     id = window.setTimeout(attempt, 60);
     return () => window.clearTimeout(id);
-  }, [layoutKey]);
+  }, [layoutKey, refitOn]);
 
   /**
    * Centring waits a beat: a focus request often arrives in the same commit as
@@ -383,18 +395,39 @@ export function Canvas({
         defaultEdgeOptions={{ type: 'routed' }}
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#d8d8d8" />
-        {/* The fit button uses the same computed fit, not React Flow's. */}
-        <Controls showInteractive={false} onFitView={fitAll}>
+        {/*
+          * All four buttons are ours. React Flow's built-in zoom and fit
+          * buttons carry their own inline SVGs, which are not reachable from
+          * `src/` and so could not be brought onto the app's icon set — with
+          * the minimap button beside them the row read as two icon sets in
+          * one control. The fit button still uses the computed fit
+          * (`fitAll`), not React Flow's DOM-measured one.
+          */}
+        <Controls showZoom={false} showFitView={false} showInteractive={false}>
+          <ControlButton
+            onClick={() => flow.zoomIn({ duration: 0 })}
+            title="Zoom in"
+            aria-label="Zoom in"
+          >
+            <Icon name="add" />
+          </ControlButton>
+          <ControlButton
+            onClick={() => flow.zoomOut({ duration: 0 })}
+            title="Zoom out"
+            aria-label="Zoom out"
+          >
+            <Icon name="remove" />
+          </ControlButton>
+          <ControlButton onClick={fitAll} title="Fit the whole diagram" aria-label="Fit view">
+            <Icon name="fit_screen" />
+          </ControlButton>
           <ControlButton
             onClick={() => onShowMinimap(!showMinimap)}
             title={showMinimap ? 'Hide the minimap' : 'Show the minimap'}
             aria-pressed={showMinimap}
             className={showMinimap ? 'minimap-toggle on' : 'minimap-toggle'}
           >
-            <svg viewBox="0 0 32 32" aria-hidden="true">
-              <path d="M4 6h24v20H4zM6 8v16h22V8z" />
-              <rect x="17" y="15" width="9" height="8" />
-            </svg>
+            <Icon name="map" />
           </ControlButton>
         </Controls>
         {showMinimap && (

@@ -31,10 +31,12 @@ import { toSvg } from './emit/svg';
 import { LayoutTimeout, layout, type LayoutResult } from './layout/elk';
 import type { Point } from './layout/elkGraph';
 import { blobToBase64, installBridge, type InstalledBridge } from './bridge/install';
-import type { ExecStatus, StepStatusPayload } from './bridge/protocol';
+import { isViewMode, type ExecStatus, type StepStatusPayload, type ViewMode } from './bridge/protocol';
 import { svgToPng } from './ui/raster';
 import { Canvas, type FocusRequest } from './ui/Canvas';
 import { Drawer, type DrawerTab } from './ui/Drawer';
+import { Icon } from './ui/Icon';
+import { SplitBar } from './ui/SplitBar';
 import { Outline, type HideableColumn, type OutlineTextSize } from './ui/Outline';
 import { usePersistedState, useResizable } from './ui/useResizable';
 import './ui/styles.css';
@@ -163,11 +165,18 @@ export function App(): React.JSX.Element {
     'M',
     (raw) => (raw === 'S' || raw === 'M' || raw === 'L' || raw === 'XL' ? raw : 'M'),
   );
-  const [flowchartVisible, setFlowchartVisible] = usePersistedState<boolean>(
-    'seqflow.flowchartVisible',
-    true,
-    (raw) => raw === 'true',
-    (v) => String(v),
+  /**
+   * Which view is showing. Replaces a `flowchartVisible` boolean: three named
+   * states, so "tree only" is as expressible as "flowchart only" and the
+   * LabVIEW bridge has something to name (`setView`). The old key is
+   * abandoned rather than migrated — one session opening in `both` costs a
+   * reader nothing, and migration code for a preference outlives the
+   * preference.
+   */
+  const [viewMode, setViewMode] = usePersistedState<ViewMode>(
+    'seqflow.viewMode',
+    'both',
+    (raw) => (isViewMode(raw) ? raw : 'both'),
   );
   const [showMinimap, setShowMinimap] = usePersistedState<boolean>(
     'seqflow.showMinimap',
@@ -242,6 +251,12 @@ export function App(): React.JSX.Element {
   const revealRef = useRef<(uid: string) => void>(() => {});
   /** Set once the mount effect below has installed the bridge. */
   const bridgeRef = useRef<InstalledBridge | null>(null);
+  /** `usePersistedState`'s setter is not stable across renders — the bridge's
+   * `setView` handler reads it through here, like every other handler. */
+  const setViewModeRef = useRef<(mode: ViewMode) => void>(() => {});
+  setViewModeRef.current = setViewMode;
+  const viewModeRef = useRef<ViewMode>('both');
+  viewModeRef.current = viewMode;
 
   /**
    * The file as parsed: what every analysis panel is about. When a baseline is
@@ -669,6 +684,10 @@ export function App(): React.JSX.Element {
     setExecutionStatus(new Map());
   }, []);
 
+  const bridgeSetView = useCallback((mode: ViewMode): void => {
+    setViewModeRef.current(mode);
+  }, []);
+
   const bridgeExportMermaid = useCallback((): string => {
     const g = graphRef.current;
     return g === null ? '' : toMermaid(g, ruleSetRef.current.rules);
@@ -703,6 +722,7 @@ export function App(): React.JSX.Element {
       nodeCount: graphRef.current?.nodes.size ?? 0,
       warnings: warningsRef.current.length,
       selected: selectedRef.current,
+      view: viewModeRef.current,
     }),
     [],
   );
@@ -724,6 +744,7 @@ export function App(): React.JSX.Element {
       setStepStatus: bridgeSetStepStatus,
       setStepStatuses: bridgeSetStepStatuses,
       resetExecution: bridgeResetExecution,
+      setView: bridgeSetView,
       exportMermaid: bridgeExportMermaid,
       exportSvg: bridgeExportSvg,
       exportPng: bridgeExportPng,
@@ -743,6 +764,7 @@ export function App(): React.JSX.Element {
     bridgeSetStepStatus,
     bridgeSetStepStatuses,
     bridgeResetExecution,
+    bridgeSetView,
     bridgeExportMermaid,
     bridgeExportSvg,
     bridgeExportPng,
@@ -768,6 +790,16 @@ export function App(): React.JSX.Element {
     if (error === null) return;
     bridgeRef.current?.enqueue('loadError', { message: error });
   }, [error]);
+
+  /**
+   * The view an operator chose, pushed out the same way a selection is.
+   * Fires on a bridge-driven change too — that is an echo confirming the
+   * state took, not a loop: `setView` is idempotent and nothing on the
+   * LabVIEW side is obliged to act on the event.
+   */
+  useEffect(() => {
+    bridgeRef.current?.enqueue('viewChanged', { view: viewMode });
+  }, [viewMode]);
 
   /** Search matches, lifted the same way a highlight always was, so a hit
    * inside a fold still reads. */
@@ -865,6 +897,11 @@ export function App(): React.JSX.Element {
     onToggleColumn: toggleColumn,
   };
 
+  /* `hidden`, not a zero width: a pane the seam says is off must not be able
+   * to take a click meant for the one that is on. */
+  const showTree = viewMode !== 'canvas';
+  const showCanvas = viewMode !== 'tree';
+
   return (
     <div className={`app${dragging ? ' dragging' : ''}`}>
       {showBanner && (
@@ -872,8 +909,13 @@ export function App(): React.JSX.Element {
           <div className="body">
             <strong>Could not load that file.</strong> <code>{error}</code>
           </div>
-          <button type="button" onClick={() => setDismissed(true)} title="Dismiss">
-            ×
+          <button
+            type="button"
+            onClick={() => setDismissed(true)}
+            title="Dismiss"
+            aria-label="Dismiss"
+          >
+            <Icon name="close" />
           </button>
         </div>
       )}
@@ -881,7 +923,8 @@ export function App(): React.JSX.Element {
       <div className="workspace">
         <section
           className="left-panel"
-          style={flowchartVisible ? { flex: `0 0 ${outlinePanel.size}px` } : undefined}
+          hidden={!showTree}
+          style={viewMode === 'both' ? { flex: `0 0 ${outlinePanel.size}px` } : undefined}
         >
           <div className="outline-section">
             {graph === null ? (
@@ -920,29 +963,14 @@ export function App(): React.JSX.Element {
           </div>
         </section>
 
-        {flowchartVisible && (
-          <div
-            className="resize-handle"
-            onPointerDown={outlinePanel.onHandleDown}
-            onDoubleClick={outlinePanel.reset}
-            role="separator"
-            aria-orientation="vertical"
-            title="Drag to resize — double-click to reset"
-          />
-        )}
+        <SplitBar
+          mode={viewMode}
+          onMode={setViewMode}
+          onHandleDown={outlinePanel.onHandleDown}
+          onReset={outlinePanel.reset}
+        />
 
-        <button
-          type="button"
-          className="flow-toggle"
-          onClick={() => setFlowchartVisible(!flowchartVisible)}
-          title={flowchartVisible ? 'Hide the flowchart' : 'Show the flowchart'}
-          aria-label={flowchartVisible ? 'Hide the flowchart' : 'Show the flowchart'}
-          aria-pressed={flowchartVisible}
-        >
-          {flowchartVisible ? '❯' : '❮'}
-        </button>
-
-        <div className="canvas-wrap" hidden={!flowchartVisible}>
+        <div className="canvas-wrap" hidden={!showCanvas}>
           {graph !== null && (
             <ReactFlowProvider>
               <Canvas
@@ -953,6 +981,7 @@ export function App(): React.JSX.Element {
                 onSelect={setSelected}
                 onToggle={toggle}
                 layoutKey={layoutKey}
+                refitOn={viewMode}
                 focus={focus}
                 showMinimap={showMinimap}
                 onShowMinimap={setShowMinimap}
@@ -971,7 +1000,7 @@ export function App(): React.JSX.Element {
         aria-label="Settings"
         aria-pressed={settingsOpen}
       >
-        ⚙
+        <Icon name="settings" />
       </button>
 
       <Drawer

@@ -150,8 +150,13 @@ button.tool:disabled {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-right: 1px solid var(--line);
   background: var(--bg-panel);
+}
+
+/* `display: flex` above beats the UA's `[hidden] { display: none }`, so the
+ * hidden pane has to be told again — otherwise "flowchart only" shows both. */
+.left-panel[hidden] {
+  display: none;
 }
 
 .outline-section {
@@ -169,44 +174,66 @@ button.tool:disabled {
 }
 
 /*
- * The vertical seam between the left panel and the canvas. `useResizable`
- * (App.tsx) drives it.
+ * The seam between the two views (`SplitBar.tsx`). Always present, in all
+ * three view modes — it carries the right-click menu that brings a hidden
+ * view back, so it is the one piece of chrome that can never be conditional.
+ * `useResizable` (App.tsx) drives the drag, but only in `both`.
  */
-.resize-handle {
-  flex: 0 0 auto;
-  background: transparent;
-  width: 6px;
-  cursor: col-resize;
+.split-bar {
+  flex: 0 0 6px;
+  background: var(--bg-raised);
   border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
 }
 
-.resize-handle:hover,
-.resize-handle:active {
+.split-bar.resizable {
+  cursor: col-resize;
+}
+
+.split-bar:hover {
   background: var(--accent-soft);
 }
 
-/*
- * The button that shows or hides the flowchart. A thin strip at the boundary
- * between the two panels, rather than a control tucked inside settings —
- * this is a primary layout choice, not a preference, so it stays visible
- * whichever way it is currently set.
- */
-.flow-toggle {
-  flex: 0 0 20px;
+/* Positioned at the pointer, so `fixed` rather than absolute — it must not be
+ * clipped by the 6px strip it belongs to. */
+.view-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 190px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18);
+}
+
+.view-menu button {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
+  padding: 6px 8px;
   border: 0;
-  border-left: 1px solid var(--line);
-  background: var(--bg-raised);
-  color: var(--text-faint);
-  font-size: 11px;
+  border-radius: 4px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
   cursor: pointer;
 }
 
-.flow-toggle:hover {
-  background: #e6e6e6;
-  color: var(--text);
+.view-menu button:hover {
+  background: var(--hover-bg);
+}
+
+.view-menu button.on {
+  color: var(--accent);
+}
+
+.view-menu .tick {
+  margin-left: auto;
 }
 
 /*
@@ -259,6 +286,20 @@ button.tool:disabled {
 .settings-gear:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+/* ------------------------------------------------------------------ icon */
+
+/*
+ * Material Symbols, inlined as paths (`Icon.tsx`). Sized in `em` and filled
+ * with `currentColor`, so an icon inherits the size and colour of the control
+ * it sits in — that is what lets the outline's four text sizes scale the log
+ * ticks and the twisties without a single per-size rule. `flex: none` keeps
+ * one from being squeezed to nothing inside a flex row that runs out of width.
+ */
+.icon {
+  flex: none;
+  vertical-align: -0.15em;
 }
 
 /* ---------------------------------------------------------------- banner */
@@ -604,7 +645,7 @@ pre.xml {
   fill: var(--accent);
 }
 
-.react-flow__controls-button.minimap-toggle svg {
+.react-flow__controls-button svg {
   width: 14px;
   height: 14px;
 }
@@ -738,7 +779,10 @@ pre.xml {
 .outline-columns-head {
   display: grid;
   grid-template-columns: var(--outline-cols);
-  gap: 5px;
+  /* No gap: the column rule *is* the separation now, and a gap would put the
+   * boundary somewhere other than the line drawn for it. Each cell pads
+   * itself instead, so the text breathes inside its own column. */
+  gap: 0;
   position: sticky;
   top: 0;
   z-index: 1;
@@ -753,11 +797,30 @@ pre.xml {
   overflow-x: hidden;
 }
 
-.outline-columns-head .col-step,
-.outline-columns-head .col-desc,
-.outline-columns-head .col-log {
+/*
+ * Scoped through `.outline` purely for specificity. `.outline .col-step`
+ * further down sets `overflow: hidden` — the row cells need it to ellipsise —
+ * and at equal specificity the later rule won, so the header cells were
+ * clipped too and the resize grip, which deliberately overhangs the cell edge
+ * by 8px, was hit-testable only across the ~2px still inside. That is most of
+ * why these columns read as fixed-width: the handle was there, and missing it
+ * was the default outcome.
+ */
+.outline .outline-columns-head .col-step,
+.outline .outline-columns-head .col-desc,
+.outline .outline-columns-head .col-log {
   position: relative;
   overflow: visible;
+  padding-right: 5px;
+  border-right: 1px solid var(--line);
+}
+
+/* The trailing edge of the table is the panel edge — a rule there would be a
+ * second line beside `.left-panel`'s own border. `:last-child` rather than a
+ * named column, so it follows whichever columns are currently shown. */
+.outline-columns-head > span:last-child,
+.outline .row > span:last-child {
+  border-right: 0;
 }
 
 .outline-columns-head .col-log {
@@ -777,16 +840,31 @@ pre.xml {
   z-index: 2;
 }
 
-.col-resize-handle:hover,
-.col-resize-handle:active {
-  background: var(--accent-soft);
+/* The grab target stays 9px and invisible; what lights up is a 2px bar on the
+ * column rule itself, so the feedback is "this line moves" rather than "this
+ * patch of header is special". Without it the handle announced itself only by
+ * a cursor change, which is why resizable columns read as fixed ones. */
+.col-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: transparent;
+}
+
+.col-resize-handle:hover::after,
+.col-resize-handle:active::after {
+  background: var(--accent);
 }
 
 .outline .row {
   display: grid;
   grid-template-columns: var(--outline-cols);
   align-items: center;
-  gap: 5px;
+  gap: 0;
   height: var(--outline-row-height);
   padding: 0 8px 0 10px;
   font-size: var(--outline-font-size);
@@ -815,16 +893,28 @@ pre.xml {
   opacity: 0.32;
 }
 
+/* Rows carry the same rules as the header, one segment each. Rows are fixed
+ * height and gapless, so the segments stack into one unbroken line down the
+ * tree — and because header and rows share `--outline-cols`, both land on the
+ * same x and a drag moves them together. Softer than the header's rule: 133 of
+ * these at full strength would read as a grid rather than a tree. */
+.outline .row > span {
+  border-right: 1px solid var(--line-soft);
+}
+
 .outline .col-step {
   display: flex;
   align-items: center;
   gap: 5px;
   min-width: 0;
   overflow: hidden;
+  padding-right: 5px;
 }
 
 .outline .col-desc {
   min-width: 0;
+  padding-right: 5px;
+  text-align: center;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -833,6 +923,7 @@ pre.xml {
 
 .outline .col-log {
   text-align: center;
+  padding-right: 5px;
   font-family: var(--mono);
   color: var(--text-dim);
   overflow: hidden;
@@ -842,15 +933,17 @@ pre.xml {
 
 .outline .twisty {
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 14px;
   height: 14px;
-  line-height: 12px;
-  text-align: center;
   background: none;
   border: 0;
   padding: 0;
   color: var(--text-faint);
-  font-size: 9px;
+  /* The icon is sized in `em`, so this is the twisty's size, not its text. */
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -883,13 +976,6 @@ pre.xml {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.outline .row-count {
-  flex: 0 0 auto;
-  font-family: var(--mono);
-  font-size: calc(var(--outline-font-size) - 2.5px);
-  color: var(--text-faint);
 }
 
 /* Scales with the same text-size control as the row it sits in, rather than
@@ -1353,9 +1439,9 @@ button.tool.on {
   color: var(--text-dim);
 }
 
-.filters-toggle .twisty-inline {
-  font-size: 8px;
-  width: 8px;
+.filters-toggle .twisty-inline,
+.type-category-head .twisty-inline {
+  font-size: 12px;
 }
 
 .filters-toggle b {

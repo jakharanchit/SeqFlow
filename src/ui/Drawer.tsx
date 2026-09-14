@@ -19,6 +19,7 @@
  */
 
 import { pathLabel } from '../core/ancestry';
+import { Icon } from './Icon';
 import { StepNum } from './StepNum';
 import type { Graph, Rules, Warning } from '../core/types';
 import type { FlowEdge, FlowNode } from '../emit/flow';
@@ -162,8 +163,14 @@ export function Drawer(props: DrawerProps): React.JSX.Element | null {
 
         <div className="spacer" />
         {open && (
-          <button type="button" className="collapse" title="Hide" onClick={() => onOpen(false)}>
-            ×
+          <button
+            type="button"
+            className="collapse"
+            title="Hide"
+            aria-label="Hide"
+            onClick={() => onOpen(false)}
+          >
+            <Icon name="close" />
           </button>
         )}
       </div>

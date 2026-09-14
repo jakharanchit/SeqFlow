@@ -25,6 +25,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { displayName, numberedName } from '../core/ancestry';
+import { Icon } from './Icon';
 import { StepNum } from './StepNum';
 import { useResizable } from './useResizable';
 import type { ElementCount, SearchResult } from '../core/search';
@@ -88,7 +89,6 @@ interface Row {
   /** Indent level within the outline, not the parse depth. */
   level: number;
   isContainer: boolean;
-  childCount: number;
 }
 
 /**
@@ -106,12 +106,7 @@ function rowsFor(graph: Graph, collapsed: ReadonlySet<string>): Row[] {
     if (node === undefined) return;
 
     const children = graph.containers.get(uid);
-    rows.push({
-      node,
-      level,
-      isContainer: children !== undefined,
-      childCount: children?.length ?? 0,
-    });
+    rows.push({ node, level, isContainer: children !== undefined });
     if (children === undefined || collapsed.has(uid)) return;
     for (const child of children) visit(child, level + 1);
   };
@@ -120,21 +115,6 @@ function rowsFor(graph: Graph, collapsed: ReadonlySet<string>): Row[] {
     if (node.parent === null) visit(node.uid, 0);
   }
   return rows;
-}
-
-/** Total nodes beneath a container, at any depth. */
-function subtreeSize(graph: Graph, uid: string): number {
-  let total = 0;
-  const stack = [...(graph.containers.get(uid) ?? [])];
-  const seen = new Set<string>();
-  while (stack.length > 0) {
-    const next = stack.pop()!;
-    if (seen.has(next)) continue;
-    seen.add(next);
-    total++;
-    stack.push(...(graph.containers.get(next) ?? []));
-  }
-  return total;
 }
 
 /** The matched run of the name, marked so the eye lands on it. */
@@ -170,9 +150,19 @@ function logGlyph(raw: string | undefined): string {
   const v = (raw ?? '').trim();
   if (v === '') return '—';
   const upper = v.toUpperCase();
-  if (upper === 'TRUE') return '✓';
-  if (upper === 'FALSE') return '✗';
+  if (upper === 'TRUE') return 'check';
+  if (upper === 'FALSE') return 'close';
   return v;
+}
+
+/** The Log Start / Log Completion cell body: an icon for the two values the
+ * dialects agree on, the raw text for anything else. Same split as
+ * `logGlyph`, kept beside it so the two cannot drift. */
+function LogCell({ raw }: { raw: string | undefined }): React.JSX.Element {
+  const v = logGlyph(raw);
+  if (v === 'check') return <Icon name="check" label="Yes" />;
+  if (v === 'close') return <Icon name="close" label="No" />;
+  return <>{v}</>;
 }
 
 /**
@@ -200,12 +190,12 @@ function DataCells({
       )}
       {!hiddenColumns.has('logStart') && (
         <span className="col-log" title={logStart ?? ''}>
-          {logGlyph(logStart)}
+          <LogCell raw={logStart} />
         </span>
       )}
       {!hiddenColumns.has('logCompletion') && (
         <span className="col-log" title={logCompletion ?? ''}>
-          {logGlyph(logCompletion)}
+          <LogCell raw={logCompletion} />
         </span>
       )}
     </>
@@ -343,13 +333,6 @@ export function Outline({
 
   const groups = useMemo(() => groupByCategory(available, categories), [available, categories]);
 
-  const sizes = useMemo(() => {
-    const out = new Map<string, number>();
-    if (graph === null) return out;
-    for (const uid of graph.containers.keys()) out.set(uid, subtreeSize(graph, uid));
-    return out;
-  }, [graph]);
-
   /* ---------------------------------------------------------------- */
   /* Windowing                                                         */
   /* ---------------------------------------------------------------- */
@@ -444,7 +427,10 @@ export function Outline({
           aria-expanded={showTypes || elements.size > 0}
           onClick={() => setShowTypes((v) => !v)}
         >
-          <span className="twisty-inline">{showTypes || elements.size > 0 ? '▾' : '▸'}</span>
+          <Icon
+            name={showTypes || elements.size > 0 ? 'expand_more' : 'chevron_right'}
+            className="twisty-inline"
+          />
           Step Types
           {elements.size > 0 && <b>{elements.size}</b>}
         </button>
@@ -461,7 +447,7 @@ export function Outline({
                     aria-expanded={open}
                     onClick={() => toggleCategory(category)}
                   >
-                    <span className="twisty-inline">{open ? '▾' : '▸'}</span>
+                    <Icon name={open ? 'expand_more' : 'chevron_right'} className="twisty-inline" />
                     {category}
                   </button>
                   {open && (
@@ -583,7 +569,7 @@ export function Outline({
           {/* Spacers stand in for the rows above and below the window, so the
               scrollbar reflects the whole tree rather than the rendered slice. */}
           {first > 0 && <div style={{ height: first * ROW_HEIGHT }} />}
-          {slice.map(({ node, level, isContainer, childCount }) => {
+          {slice.map(({ node, level, isContainer }) => {
             const isCollapsed = collapsed.has(node.uid);
             const dimmed = elements.size > 0 && !elements.has(node.element);
             return (
@@ -621,7 +607,7 @@ export function Outline({
                         onToggle(node.uid);
                       }}
                     >
-                      {isCollapsed ? '▸' : '▾'}
+                      <Icon name={isCollapsed ? 'chevron_right' : 'expand_more'} />
                     </button>
                   ) : (
                     <span className={`dot kind-${node.kind}`} />
@@ -634,12 +620,6 @@ export function Outline({
                   >
                     {displayName(node)}
                   </span>
-
-                  {isContainer && (
-                    <span className="row-count">
-                      {isCollapsed ? (sizes.get(node.uid) ?? childCount) : childCount}
-                    </span>
-                  )}
                 </span>
                 <DataCells node={node} hiddenColumns={hiddenColumns} />
               </div>
@@ -667,12 +647,13 @@ export function Outline({
                 type="button"
                 className="clear"
                 title="Clear search and filter"
+                aria-label="Clear search and filter"
                 onClick={() => {
                   onTextChange('');
                   onElementsChange(new Set());
                 }}
               >
-                ×
+                <Icon name="close" />
               </button>
             )}
           </div>
@@ -683,8 +664,9 @@ export function Outline({
               disabled={sizeIndex <= 0}
               onClick={() => onTextSizeChange(OUTLINE_SIZES[Math.max(0, sizeIndex - 1)]!.level)}
               title="Smaller text"
+              aria-label="Smaller text"
             >
-              A−
+              <Icon name="text_decrease" />
             </button>
             <button
               type="button"
@@ -693,8 +675,9 @@ export function Outline({
                 onTextSizeChange(OUTLINE_SIZES[Math.min(OUTLINE_SIZES.length - 1, sizeIndex + 1)]!.level)
               }
               title="Larger text"
+              aria-label="Larger text"
             >
-              A+
+              <Icon name="text_increase" />
             </button>
           </div>
 

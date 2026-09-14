@@ -48,11 +48,13 @@ import {
   asSelectStepPayload,
   asStepStatusPayload,
   asStepStatusesPayload,
+  asViewPayload,
   parseCommand,
   serialiseEvents,
   type Command,
   type ExecStatus,
   type StepStatusPayload,
+  type ViewMode,
 } from './protocol';
 
 export interface PngResult {
@@ -72,6 +74,7 @@ export interface BridgeHandlers {
   setStepStatus(uid: string, status: ExecStatus): void;
   setStepStatuses(entries: readonly StepStatusPayload[]): void;
   resetExecution(): void;
+  setView(view: ViewMode): void;
   exportMermaid(): string;
   exportSvg(): string;
   exportPng(): Promise<PngResult>;
@@ -135,6 +138,11 @@ function dispatch(command: Command, handlers: BridgeHandlers, queue: EventQueue)
     case 'selectStep': {
       const p = asSelectStepPayload(command.payload);
       handlers.selectStep(p.uid);
+      return null;
+    }
+    case 'setView': {
+      const p = asViewPayload(command.payload);
+      handlers.setView(p.view);
       return null;
     }
     case 'setStepStatus': {

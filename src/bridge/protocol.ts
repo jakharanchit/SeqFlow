@@ -29,6 +29,24 @@ export function isExecStatus(value: unknown): value is ExecStatus {
   return typeof value === 'string' && EXEC_STATUSES.has(value);
 }
 
+/**
+ * Which of the two views the workspace is showing.
+ *
+ * The tree and the flowchart are one app sharing selection, collapse and
+ * execution state, but they are two independently addressable *views* of it —
+ * an embedded LabVIEW panel with room for only one should be able to say
+ * which, without the operator reaching for a menu. Named on the wire rather
+ * than numbered: a boolean would say which pane is hidden and would have to
+ * grow a second one the day a third view appears.
+ */
+export type ViewMode = 'tree' | 'canvas' | 'both';
+
+const VIEW_MODES: ReadonlySet<string> = new Set<ViewMode>(['tree', 'canvas', 'both']);
+
+export function isViewMode(value: unknown): value is ViewMode {
+  return typeof value === 'string' && VIEW_MODES.has(value);
+}
+
 /* ------------------------------------------------------------------ */
 /* Inbound: LabVIEW -> app                                             */
 /* ------------------------------------------------------------------ */
@@ -45,6 +63,7 @@ export type CommandType =
   | 'exportMermaid'
   | 'exportSvg'
   | 'exportPng'
+  | 'setView'
   | 'getState';
 
 const COMMAND_TYPES: ReadonlySet<string> = new Set<CommandType>([
@@ -59,6 +78,7 @@ const COMMAND_TYPES: ReadonlySet<string> = new Set<CommandType>([
   'exportMermaid',
   'exportSvg',
   'exportPng',
+  'setView',
   'getState',
 ]);
 
@@ -129,6 +149,21 @@ export function asSelectStepPayload(payload: unknown): SelectStepPayload {
   const v = payload as Record<string, unknown>;
   if (typeof v['uid'] !== 'string') throw new BridgeError('payload.uid must be a string');
   return { uid: v['uid'] };
+}
+
+export interface ViewPayload {
+  view: ViewMode;
+}
+
+export function asViewPayload(payload: unknown): ViewPayload {
+  if (typeof payload !== 'object' || payload === null) {
+    throw new BridgeError('payload must be an object with "view"');
+  }
+  const v = (payload as Record<string, unknown>)['view'];
+  if (!isViewMode(v)) {
+    throw new BridgeError('payload.view must be one of "tree", "canvas", "both"');
+  }
+  return { view: v };
 }
 
 export interface StepStatusPayload {
