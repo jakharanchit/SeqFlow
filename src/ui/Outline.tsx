@@ -435,62 +435,9 @@ export function Outline({
 
   return (
     <aside className="outline" style={rowStyle}>
-      <div className="outline-head">
-        <span>Outline</span>
-        <div className="outline-textsize" role="group" aria-label="Tree text size">
-          <button
-            type="button"
-            disabled={sizeIndex <= 0}
-            onClick={() => onTextSizeChange(OUTLINE_SIZES[Math.max(0, sizeIndex - 1)]!.level)}
-            title="Smaller text"
-          >
-            A−
-          </button>
-          <button
-            type="button"
-            disabled={sizeIndex >= OUTLINE_SIZES.length - 1}
-            onClick={() =>
-              onTextSizeChange(OUTLINE_SIZES[Math.min(OUTLINE_SIZES.length - 1, sizeIndex + 1)]!.level)
-            }
-            title="Larger text"
-          >
-            A+
-          </button>
-        </div>
-        <div className="outline-actions">
-          <button type="button" onClick={onCollapseAll} title="Collapse every sequence">
-            Collapse all
-          </button>
-          <button type="button" onClick={onExpandAll} title="Expand every sequence">
-            Expand all
-          </button>
-        </div>
-      </div>
-
-      <div className="outline-search">
-        <div className="search-line">
-          <input
-            type="search"
-            value={text}
-            placeholder="Search names or a step number…"
-            aria-label="Search step names"
-            onChange={(e) => onTextChange(e.target.value)}
-          />
-          {searching && (
-            <button
-              type="button"
-              className="clear"
-              title="Clear search and filter"
-              onClick={() => {
-                onTextChange('');
-                onElementsChange(new Set());
-              }}
-            >
-              ×
-            </button>
-          )}
-        </div>
-
+      {/* Step Types stays at the top: it narrows the tree in place, so it
+          reads as something applied to the list below it. */}
+      <div className="outline-filters">
         <button
           type="button"
           className="filters-toggle"
@@ -701,6 +648,66 @@ export function Outline({
           {last < rows.length && <div style={{ height: (rows.length - last) * ROW_HEIGHT }} />}
         </div>
       )}
+
+      <div className="outline-search">
+        {/* One bar: the search box takes what the buttons beside it leave. The
+            controls that used to sit in an "Outline" header live here instead
+            the header carried a label and nothing else worth a row of its own. */}
+        <div className="search-line">
+          <div className="search-box">
+            <input
+              type="search"
+              value={text}
+              placeholder="Search names or a step number…"
+              aria-label="Search step names"
+              onChange={(e) => onTextChange(e.target.value)}
+            />
+            {searching && (
+              <button
+                type="button"
+                className="clear"
+                title="Clear search and filter"
+                onClick={() => {
+                  onTextChange('');
+                  onElementsChange(new Set());
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+
+          <div className="outline-textsize" role="group" aria-label="Tree text size">
+            <button
+              type="button"
+              disabled={sizeIndex <= 0}
+              onClick={() => onTextSizeChange(OUTLINE_SIZES[Math.max(0, sizeIndex - 1)]!.level)}
+              title="Smaller text"
+            >
+              A−
+            </button>
+            <button
+              type="button"
+              disabled={sizeIndex >= OUTLINE_SIZES.length - 1}
+              onClick={() =>
+                onTextSizeChange(OUTLINE_SIZES[Math.min(OUTLINE_SIZES.length - 1, sizeIndex + 1)]!.level)
+              }
+              title="Larger text"
+            >
+              A+
+            </button>
+          </div>
+
+          <div className="outline-actions">
+            <button type="button" onClick={onCollapseAll} title="Collapse every sequence">
+              Collapse all
+            </button>
+            <button type="button" onClick={onExpandAll} title="Expand every sequence">
+              Expand all
+            </button>
+          </div>
+        </div>
+      </div>
     </aside>
   );
 }

@@ -678,9 +678,11 @@ pre.xml {
   padding: 14px;
 }
 
-.outline-textsize {
+.outline-textsize,
+.outline-actions {
   display: flex;
   gap: 2px;
+  flex: 0 0 auto;
 }
 
 .outline-textsize button {
@@ -704,26 +706,6 @@ pre.xml {
 .outline-textsize button:disabled {
   opacity: 0.4;
   cursor: default;
-}
-
-.outline-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 9px 10px;
-  border-bottom: 1px solid var(--line);
-  font-size: 10.5px;
-  font-weight: 620;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-  flex: 0 0 auto;
-}
-
-.outline-actions {
-  display: flex;
-  gap: 4px;
 }
 
 .outline-actions button {
@@ -937,15 +919,40 @@ pre.xml {
 
 /* ---------------------------------------------------------------- search */
 
-.outline-search {
+/* Step Types is the one narrowing control that stays at the top: it dims
+ * rows in the tree in place rather than replacing it, so it has to read as
+ * something applied to the list underneath it. */
+.outline-filters {
   flex: 0 0 auto;
-  padding: 8px 8px 6px;
+  padding: 4px 8px 6px;
   border-bottom: 1px solid var(--line);
 }
 
+.outline-filters .filters-toggle {
+  margin-top: 0;
+}
+
+/* Bottom of the pane: the tree scrolls above it and it stays put, so the
+ * search box and the controls that narrow the tree sit together at the edge
+ * nearest the reader's hands rather than in a header of their own. */
+.outline-search {
+  flex: 0 0 auto;
+  padding: 6px 8px 8px;
+  border-top: 1px solid var(--line);
+}
+
+/* One row: the box takes whatever the button groups beside it leave. */
 .search-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.search-box {
   position: relative;
   display: flex;
+  flex: 1 1 auto;
+  min-width: 90px;
 }
 
 .outline-search input {
@@ -969,7 +976,7 @@ pre.xml {
   display: none;
 }
 
-.search-line .clear {
+.search-box .clear {
   position: absolute;
   right: 4px;
   top: 50%;
@@ -983,7 +990,7 @@ pre.xml {
   cursor: pointer;
 }
 
-.search-line .clear:hover {
+.search-box .clear:hover {
   color: var(--text);
 }
 
@@ -1126,6 +1133,7 @@ button.tool.on {
   border-left: 1px solid var(--line);
   box-shadow: -6px 0 18px rgba(0, 0, 0, 0.15);
   z-index: 25;
+  padding-left: 10px;
 }
 
 .drawer-tabs {
