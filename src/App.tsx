@@ -16,7 +16,7 @@ import rulesText from '../rules.yaml?raw';
 import { ParseError, parse } from './core/parse';
 import { RuleFileError, loadRules } from './core/rules';
 import type { Graph, Rules, Warning } from './core/types';
-import { ancestorUids } from './core/ancestry';
+import { ancestorUids, displayName, numberedName, pathLabel } from './core/ancestry';
 import { elementCounts, isActive, matchSet, search } from './core/search';
 import { asGraph, autoCollapse, visibleGraph } from './emit/collapse';
 import {
@@ -654,6 +654,26 @@ export function App(): React.JSX.Element {
   /* LabVIEW bridge                                                     */
   /* ---------------------------------------------------------------- */
 
+  /** The bare uid `selected` holds is opaque to anything outside this page —
+   * a sibling LabVIEW module broadcasting it onward needs something a reader
+   * or a log line can show. Used for both `getState`'s `selected` field and
+   * the `stepSelected` event, so the two ways of learning the selection never
+   * disagree. */
+  function selectedDetail(graph: Graph | null, uid: string | null): Record<string, unknown> | null {
+    if (graph === null || uid === null) return null;
+    const node = graph.nodes.get(uid);
+    if (node === undefined) return null;
+    return {
+      uid: node.uid,
+      name: displayName(node),
+      stepNumber: node.stepNumber,
+      numbered: numberedName(node),
+      element: node.element,
+      kind: node.kind,
+      path: pathLabel(graph, uid),
+    };
+  }
+
   /** `selectStep` — reuses `reveal`, which already selects, expands whatever
    * collapsed sequence is hiding the step, and centres the viewport on it. */
   const bridgeSelectStep = useCallback((uid: string): void => {
@@ -721,7 +741,7 @@ export function App(): React.JSX.Element {
       fileName: loadedRef.current?.fileName ?? null,
       nodeCount: graphRef.current?.nodes.size ?? 0,
       warnings: warningsRef.current.length,
-      selected: selectedRef.current,
+      selected: selectedDetail(graphRef.current, selectedRef.current),
       view: viewModeRef.current,
     }),
     [],
@@ -774,7 +794,7 @@ export function App(): React.JSX.Element {
   /** Pushed out whenever the reader (or LabVIEW's own `selectStep`) changes
    * the selection — LabVIEW polls these to know what an operator clicked. */
   useEffect(() => {
-    bridgeRef.current?.enqueue('stepSelected', { uid: selected });
+    bridgeRef.current?.enqueue('stepSelected', selectedDetail(graphRef.current, selected));
   }, [selected]);
 
   useEffect(() => {
