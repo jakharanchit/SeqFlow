@@ -15,6 +15,8 @@
  * on the other end of this, not a person who can fix a typo and retry.
  */
 
+import { flatEvent, toAsciiJson } from './labview';
+
 export type ExecStatus = 'pending' | 'running' | 'pass' | 'fail' | 'skipped';
 
 const EXEC_STATUSES: ReadonlySet<string> = new Set([
@@ -110,6 +112,27 @@ export function parseCommand(text: string): Command {
   }
   const id = typeof value['id'] === 'string' ? value['id'] : null;
   return { id, type: type as CommandType, payload: value['payload'] };
+}
+
+/**
+ * The `id` out of a command that never became a `Command` — best effort, for
+ * the error envelope. A caller that supplied an id and got a parse failure
+ * back still has to correlate it with the request it sent; reporting
+ * `id: null` there makes the one reply LabVIEW most needs to match the one
+ * it cannot. Only reached on the failure path, so re-parsing the text costs
+ * nothing on a normal call.
+ */
+export function peekCommandId(text: string): string | null {
+  try {
+    const raw: unknown = JSON.parse(text);
+    if (typeof raw === 'object' && raw !== null) {
+      const id = (raw as Record<string, unknown>)['id'];
+      if (typeof id === 'string') return id;
+    }
+  } catch {
+    // Not JSON at all — there is no id to find.
+  }
+  return null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -217,21 +240,43 @@ export function asStepStatusesPayload(payload: unknown): StepStatusesPayload {
 /* Outbound: app -> LabVIEW                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Which side caused an event the app is reporting back.
+ *
+ * Only `stepSelected` carries it today, and only because selection is the one
+ * piece of state both ends write: LabVIEW sends `selectStep`, the app reports
+ * `stepSelected`, and a LabVIEW side that reacts to the report by selecting
+ * again has built a loop. `origin: "host"` is the app saying "this is your own
+ * command coming back" — ignorable — where `"user"` is an operator clicking
+ * the canvas, which is the event worth acting on.
+ */
+export type EventOrigin = 'user' | 'host';
+
 export interface BridgeEvent {
   type: string;
   payload: unknown;
   /** `Date.now()` at the time it was queued — an ordering aid for LabVIEW,
    * never a key; nothing here reads it back. */
   at: number;
+  /** Present on `stepSelected` and nothing else. A missing key unflattens
+   * into an empty string against LabVIEW's cluster, which is exactly what
+   * "this event has no origin" should look like there. */
+  origin?: EventOrigin;
 }
 
 /**
- * The default outbound transport is polling, not push — see the LabVIEW
- * integration notes: whether Execute JavaScript's control can call back into
- * LabVIEW asynchronously is not confirmed for the 2026 release. A Helper Loop
- * drains this on a timer via `pollEvents()` (see `install.ts`) regardless of
- * whether a real push channel turns out to exist; only the transport
- * underneath changes if it does, not this queue or the event shapes it holds.
+ * The fallback outbound transport, and the one the browser console uses.
+ *
+ * Fallback / non-LabVIEW event path. When LabVIEW is attached via
+ * `attachLabVIEW()`, events are pushed directly, and this queue only holds
+ * pre-attach and failed-push events. LabVIEW should not poll this.
+ *
+ * A LabVIEW Web Browser control that exposes `LabVIEW.FireUserEvent` can hand
+ * the bridge a push sink instead (`setEventSink` in `install.ts`), and while
+ * one is attached nothing lands here at all. The queue is what a page with no
+ * sink uses, what a sink that threw falls back to, and what `pollEvents()`
+ * drains — the event shapes are the same either way, which is the point: only
+ * the transport differs.
  *
  * Capped rather than unbounded: a LabVIEW side that stops polling (crashed,
  * closed, never wired up) must not turn a running app into a slow memory leak.
@@ -244,7 +289,27 @@ export class EventQueue {
   private items: BridgeEvent[] = [];
 
   push(type: string, payload?: unknown): void {
-    this.items.push({ type, payload, at: Date.now() });
+    this.pushEvent({ type, payload, at: Date.now() });
+  }
+
+  pushEvent(event: BridgeEvent): void {
+    this.items.push(event);
+    this.trim();
+  }
+
+  /**
+   * Put events back at the front, in order — what a push sink that threw
+   * mid-flush leaves behind. The cap still applies, and still drops the
+   * oldest first, so a requeue into an already-full queue loses the events
+   * furthest back rather than the ones that just failed to deliver.
+   */
+  unshift(events: readonly BridgeEvent[]): void {
+    if (events.length === 0) return;
+    this.items.unshift(...events);
+    this.trim();
+  }
+
+  private trim(): void {
     if (this.items.length > QUEUE_LIMIT) {
       this.items.splice(0, this.items.length - QUEUE_LIMIT);
     }
@@ -263,5 +328,42 @@ export class EventQueue {
 }
 
 export function serialiseEvents(events: readonly BridgeEvent[]): string {
-  return JSON.stringify(events);
+  return toAsciiJson(events);
 }
+
+/**
+ * The same queue, flattened one level: `payload` arrives as a JSON *string*
+ * rather than a nested object.
+ *
+ * LabVIEW's Unflatten From JSON needs a concrete type for every field, and
+ * an event's payload is a different shape per event type — `stepSelected`'s
+ * seven strings, `fileLoaded`'s two counts, `exportPngResult`'s base64. There
+ * is no one cluster for that, and a Variant field only defers the problem.
+ * Handing each payload over as text lets the Helper Loop unflatten it a
+ * second time, in the case structure that already knows which type it is.
+ *
+ * `undefined` serialises as `"null"`, not as a missing key: an event with no
+ * payload still has to unflatten into the same cluster as one that has one.
+ *
+ * Both this and `serialiseEvents` drain the same queue, so poll one or the
+ * other, never both — whichever runs first takes the events.
+ */
+export function serialiseEventsFlat(events: readonly BridgeEvent[]): string {
+  return toAsciiJson(events.map(flatEvent));
+}
+
+/**
+ * Bumped whenever the set of methods on `window.SeqFlowBridge`, or what one
+ * of them returns, changes — so a LabVIEW module built against an older
+ * `dist/index.html` can say so at start-up instead of failing on the first
+ * call to a method that is not there.
+ *
+ * 1: the original surface — `handleCommand` returned nothing.
+ * 2: every method returns a string; `pollEventsFlat`, `isReady`, `ping`,
+ *    `version` added; `id` echoed on the sync envelope.
+ * 3: `setEventSink` added — a push channel that replaces polling while it is
+ *    attached; `stepSelected` grew a top-level `origin`.
+ * 4: `attachLabVIEW` added — pushes straight into a LabVIEW User Event, and
+ *    every JSON string the bridge returns or fires is pure ASCII.
+ */
+export const BRIDGE_PROTOCOL_VERSION = '4';

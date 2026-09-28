@@ -7,16 +7,26 @@
  * whose functions read from refs rather than closing over render-time state —
  * see the comment on `installBridge`'s call site in `App.tsx` for why.
  *
+ * **Every method here returns a string, synchronously, and never throws.**
+ * That is not defensiveness for its own sake: Execute JavaScript will not
+ * return a value from function-wrapped code — `(function(){return 'hi'})()`
+ * comes back empty — so LabVIEW can do no processing on the JS side and can
+ * send nothing but a plain method call. Everything a caller could otherwise
+ * have computed in a wrapper has to be in the return value already, and a
+ * thrown exception is indistinguishable at that boundary from a method that
+ * returned nothing at all.
+ *
  * Two entry points on `window.SeqFlowBridge`, matching how Execute JavaScript
  * actually marshals data (one string in, one optional string out):
  *
- * - `handleCommand(text)` — fire-and-forget. Anything that fails is reported
- *   through `pollEvents()` as a `commandError` event rather than thrown, since
- *   there is nothing on the LabVIEW side to catch a thrown JS exception from
- *   an async call.
+ * - `handleCommand(text)` — fire-and-forget. Returns `{"ok":true,"id":...}`
+ *   once the command is *accepted*; anything that fails is reported both in
+ *   that envelope and through the event queue as a `commandError`, since an
+ *   async failure has no envelope left to land in and there is nothing on the
+ *   LabVIEW side to catch a thrown JS exception from an async call.
  * - `handleCommandSync(text)` — LabVIEW sets *Wait for Return Value* = TRUE and
- *   gets `{"ok":true,"result":...}` or `{"ok":false,"error":"..."}` back as a
- *   JSON string. Reserved for handlers that return a value synchronously
+ *   gets `{"ok":true,"result":...,"id":...}` or
+ *   `{"ok":false,"error":"...","id":...}` back as a JSON string. Reserved for handlers that return a value synchronously
  *   (loads, selection, the text/SVG exports, `getState`) — `exportPng` cannot
  *   go through this path at all: rasterising to a canvas is asynchronous, and
  *   a synchronous Execute JavaScript call has no way to wait on it even if the
@@ -39,6 +49,28 @@
  * dynamically without going back to a JSON envelope) — it only ever affects
  * the toolbar title, export file names and error-message prefixes, never
  * parsing, so a call with no name at all still loads the file correctly.
+ *
+ * Plus `pollEvents` / `pollEventsFlat` (the outbound queue, nested or with
+ * each payload pre-stringified — see `serialiseEventsFlat`) and three
+ * diagnostics that take no argument: `isReady`, `ping`, `version`.
+ *
+ * Outbound, `setEventSink` replaces that polling with push where the host can
+ * take it — a LabVIEW Web Browser control that exposes `LabVIEW.FireUserEvent`
+ * hands over a closure and stops running a 200 ms timer. It is the one method
+ * here that does not return a string, because its argument is a JS function
+ * and its caller is therefore JS. Polling stays: it is the fallback when no
+ * sink is attached, what a sink that threw falls back *to*, and the only way
+ * to exercise the bridge from a browser console.
+ *
+ * `attachLabVIEW(refnum)` is that push with the closure written here instead
+ * of in a VI: it fires each event straight into a LabVIEW User Event (see
+ * `labview.ts`) and takes precedence over any sink while attached.
+ *
+ * Every JSON string returned or fired is pure ASCII — see `toAsciiJson`.
+ *
+ * `docs/LABVIEW-EVENTS.md` is the exact reference for all of it, generated
+ * from this file and `App.tsx` — every method's return shape and every event
+ * payload key.
  */
 
 import {
@@ -50,12 +82,18 @@ import {
   asStepStatusesPayload,
   asViewPayload,
   parseCommand,
+  peekCommandId,
   serialiseEvents,
+  serialiseEventsFlat,
+  BRIDGE_PROTOCOL_VERSION,
+  type BridgeEvent,
   type Command,
+  type EventOrigin,
   type ExecStatus,
   type StepStatusPayload,
   type ViewMode,
 } from './protocol';
+import { pushToLabVIEW, toAsciiJson } from './labview';
 
 export interface PngResult {
   /** Base64, no `data:` prefix — Execute JavaScript's return channel is a
@@ -81,16 +119,81 @@ export interface BridgeHandlers {
   getState(): Record<string, unknown>;
 }
 
+/**
+ * A push channel out of the page, in place of polling.
+ *
+ * The newer LabVIEW Web Browser control exposes `LabVIEW.FireUserEvent` to
+ * code run through Execute JavaScript, so LabVIEW can hand the bridge a
+ * closure that fires a User Event and stop draining a queue on a timer:
+ *
+ * ```js
+ * var refnum = JSON.parse(Arg).refnum;
+ * window.SeqFlowBridge.setEventSink(function (evt) {
+ *   LabVIEW.FireUserEvent(refnum, JSON.stringify(evt));
+ * });
+ * return 0;
+ * ```
+ *
+ * The sink takes the event *object*; serialising it is the caller's job, so
+ * nothing here has to guess which of the two wire shapes a host wants. That
+ * is also what keeps this file host-agnostic — there is no `LabVIEW` global
+ * anywhere in it, and the snippet above is the only LabVIEW-specific code in
+ * the whole arrangement.
+ */
+export type EventSink = (evt: BridgeEvent) => void;
+
 export interface SeqFlowBridgeApi {
-  handleCommand(text: string): void;
+  /** Fire-and-forget. Returns `{"ok":true,"id":...}` once the command is
+   * accepted — not once it has finished; an async one like `exportPng` is
+   * still only starting. Parse and validation failures come back as
+   * `{"ok":false,"error":"...","id":...}` *and* as a `commandError` event,
+   * so a Helper Loop that logs those keeps working unchanged. */
+  handleCommand(text: string): string;
   handleCommandSync(text: string): string;
-  /** Drains and returns the outbound queue as a JSON array. A LabVIEW Helper
-   * Loop calls this on a timer — see `protocol.ts`'s `EventQueue`. */
+  /** Drains and returns the outbound queue as an ASCII JSON array of
+   * `{type, payload, at}`, payload nested.
+   *
+   * Fallback / non-LabVIEW event path. When LabVIEW is attached via
+   * `attachLabVIEW()`, events are pushed directly, and this queue only holds
+   * pre-attach and failed-push events. LabVIEW should not poll this. */
   pollEvents(): string;
+  /** The same drain with each payload pre-stringified — what a LabVIEW
+   * Helper Loop should poll, since Unflatten From JSON cannot decode a
+   * nested payload whose shape varies by event type. Drains the same queue
+   * as `pollEvents`: poll one, never both. */
+  pollEventsFlat(): string;
+  /** `"true"` once `installBridge` has finished. A LabVIEW Initialize case
+   * gates its first command on this rather than on a navigation event —
+   * `typeof window.SeqFlowBridge !== 'undefined'` still works as a fallback
+   * for a page built before this method existed. */
+  isReady(): string;
+  /** `"pong"`. The smallest possible round trip through ExecuteJavaScript. */
+  ping(): string;
+  /** `BRIDGE_PROTOCOL_VERSION` — see `protocol.ts`. */
+  version(): string;
+  /**
+   * Attach a push sink, or pass `null` to detach and go back to polling.
+   *
+   * Returns the number of already-queued events flushed to it, so the caller
+   * knows whether it missed anything between page load and attaching — the
+   * one number a `pollEvents()` call it is about to stop making would have
+   * told it. The only method here that does not return a string: its argument
+   * is a JS function, so its caller is JS either way and has no marshalling
+   * problem to solve.
+   */
+  setEventSink(sink: EventSink | null): number;
+  /**
+   * Push every event into the LabVIEW User Event behind `refnum`. Sends
+   * `bridgeReady` first, then flushes the queue in order; returns how many
+   * events it pushed, `bridgeReady` included, as a bare string. Calling it
+   * again with the same refnum does nothing and returns `"0"`. A push that fails is queued and the refnum stays
+   * attached.
+   */
+  attachLabVIEW(refnum: number): string;
   /** Raw pass-throughs for the load family — see the module doc. Each returns
-   * the same `{"ok":true,"result":null}` / `{"ok":false,"error":"..."}` shape
-   * as `handleCommandSync`, so LabVIEW-side result handling does not have to
-   * branch on which entry point was used. */
+   * the same `{"ok":true,"result":null,"id":null}` / `{"ok":false,"error":"..."}`
+   * shape as `handleCommandSync`, so LabVIEW-side result handling does not
+   * have to branch on which entry point was used. */
   loadXml(text: string, fileName?: string): string;
   loadRuleFile(text: string, fileName?: string): string;
   loadLayout(text: string, fileName?: string): string;
@@ -103,9 +206,14 @@ declare global {
 }
 
 export interface InstalledBridge {
-  /** Queue an outbound event that did not originate from a command reply —
+  /** Send an outbound event that did not originate from a command reply —
    * e.g. `stepSelected` when the reader clicks the canvas directly, or
-   * `fileLoaded`/`loadError` from a drag-and-drop rather than a bridge call. */
+   * `fileLoaded`/`loadError` from a drag-and-drop rather than a bridge call.
+   * Goes to the push sink if one is attached and to the queue otherwise.
+   *
+   * `stepSelected` is handled specially, and only here: it is tagged with an
+   * `origin` and dropped when the selection did not actually change — see
+   * `selectionEvent`. Every caller sends it the same way regardless. */
   enqueue(type: string, payload?: unknown): void;
   /** Removes `window.SeqFlowBridge`. */
   dispose(): void;
@@ -115,7 +223,14 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function dispatch(command: Command, handlers: BridgeHandlers, queue: EventQueue): unknown {
+type Emit = (type: string, payload?: unknown) => void;
+
+function dispatch(
+  command: Command,
+  handlers: BridgeHandlers,
+  emit: Emit,
+  onSelectStep: (uid: string) => void,
+): unknown {
   switch (command.type) {
     case 'loadXml': {
       const p = asFilePayload(command.payload);
@@ -137,6 +252,7 @@ function dispatch(command: Command, handlers: BridgeHandlers, queue: EventQueue)
       return null;
     case 'selectStep': {
       const p = asSelectStepPayload(command.payload);
+      onSelectStep(p.uid);
       handlers.selectStep(p.uid);
       return null;
     }
@@ -168,10 +284,8 @@ function dispatch(command: Command, handlers: BridgeHandlers, queue: EventQueue)
       // command that started it, the way a request-and-wait-for-reply would.
       void handlers
         .exportPng()
-        .then((result) => queue.push('exportPngResult', { id: command.id, ...result }))
-        .catch((err: unknown) =>
-          queue.push('exportPngError', { id: command.id, message: message(err) }),
-        );
+        .then((result) => emit('exportPngResult', { id: command.id, ...result }))
+        .catch((err: unknown) => emit('exportPngError', { id: command.id, message: message(err) }));
       return null;
     case 'getState':
       return handlers.getState();
@@ -184,18 +298,146 @@ function dispatch(command: Command, handlers: BridgeHandlers, queue: EventQueue)
 
 export function installBridge(handlers: BridgeHandlers): InstalledBridge {
   const queue = new EventQueue();
+  let ready = false;
+
+  /** The push sink, when a host has attached one. Null means queue. */
+  let sink: EventSink | null = null;
+
+  /** The LabVIEW User Event refnum from `attachLabVIEW`. Wins over `sink`. */
+  let labview: number | null = null;
+
+  /**
+   * The uid a `selectStep` command asked for and whose `stepSelected` echo has
+   * not come back yet — the one thing that distinguishes a selection the host
+   * caused from one an operator caused. Cleared by that echo, so it can never
+   * mis-tag the *next* selection as `host`.
+   */
+  let hostSelect: string | null = null;
+
+  /**
+   * The uid of the last selection reported out, or `undefined` before any has
+   * been. `undefined` rather than `null` because `null` is a real value here —
+   * "nothing is selected" is a state worth reporting once, and it is what the
+   * app reports on mount.
+   */
+  let reported: string | null | undefined = undefined;
+
+  /**
+   * The one place an event leaves this module — sink if one is attached, the
+   * queue otherwise, never both. Double delivery would show up on the LabVIEW
+   * side as every event arriving twice the moment someone left a Helper Loop
+   * polling after attaching a sink, which is exactly the mistake a module
+   * being migrated off polling is going to make.
+   */
+  function deliver(event: BridgeEvent): void {
+    if (labview !== null) {
+      if (!pushToLabVIEW(labview, event)) queue.pushEvent(event);
+      return;
+    }
+    if (sink === null) {
+      queue.pushEvent(event);
+      return;
+    }
+    try {
+      sink(event);
+    } catch (err) {
+      detach([event], err);
+    }
+  }
+
+  /**
+   * A sink that threw is a sink that is gone — the usual cause is a LabVIEW
+   * refnum that went stale when the module stopped without detaching, and
+   * every subsequent call would throw the same way. So: drop it, put what it
+   * did not take back at the front of the queue in order, and say so once.
+   * The page carries on queueing, which is where it started.
+   */
+  function detach(undelivered: readonly BridgeEvent[], err: unknown): void {
+    sink = null;
+    queue.unshift(undelivered);
+    console.error(`SeqFlowBridge: event sink threw, detached — ${message(err)}`);
+  }
+
+  function emit(type: string, payload?: unknown, origin?: EventOrigin): void {
+    deliver({ type, payload, at: Date.now(), ...(origin === undefined ? {} : { origin }) });
+  }
+
+  /** Arm the echo, from a `selectStep` command. A redundant one arms nothing:
+   * no echo is coming, and the flag would be left set to mis-tag whatever the
+   * operator clicks next. */
+  function onSelectStep(uid: string): void {
+    if (uid !== reported) hostSelect = uid;
+  }
+
+  /**
+   * `stepSelected` is the one event both ends write, so it is the one that can
+   * loop: LabVIEW sends `selectStep`, the app reports the selection, LabVIEW
+   * reacts by selecting again. Two things break that here, and both belong on
+   * this side of the boundary rather than in a LabVIEW case structure.
+   *
+   * `origin` says whose selection it was — `host` for the echo of a
+   * `selectStep`, `user` for a canvas or tree click.
+   *
+   * And a selection that did not *change* is not reported at all. A
+   * `selectStep` for the step already selected is the common way to hit that:
+   * the app's own effect is keyed on the selection, so it never fires, and
+   * nothing here should invent an event it did not get. Holding the last
+   * reported uid makes that true regardless of which side asked.
+   */
+  function selectionEvent(payload: unknown): void {
+    const uid =
+      typeof payload === 'object' && payload !== null
+        ? ((payload as Record<string, unknown>)['uid'] as string | undefined) ?? null
+        : null;
+    if (uid === reported) return;
+    const origin: EventOrigin = uid !== null && uid === hostSelect ? 'host' : 'user';
+    hostSelect = null;
+    reported = uid;
+    emit('stepSelected', payload, origin);
+  }
+
+  /**
+   * Every public method's whole body runs inside this.
+   *
+   * ExecuteJavaScript hands LabVIEW back one optional string, and a thrown
+   * JS exception is indistinguishable at that boundary from a method that
+   * returned nothing at all — the same empty string, no error, no way to
+   * tell which happened. So nothing here throws: a failure is a string that
+   * says so, in the same envelope a success uses.
+   */
+  function safe(fn: () => string, id: string | null = null): string {
+    try {
+      return fn();
+    } catch (err) {
+      return toAsciiJson({ ok: false, error: message(err), id });
+    }
+  }
 
   /** Every raw pass-through shares this shape: run the handler, report the
-   * same `{ok, ...}` envelope `handleCommandSync` uses. A `try`/`catch` here
-   * costs nothing and protects against a future handler that does throw —
-   * none of the current ones do; `App.tsx`'s load functions already catch
-   * their own parse errors and report them as a `loadError` event instead. */
+   * same `{ok, ...}` envelope `handleCommandSync` uses. The `safe` wrapper
+   * protects against a future handler that does throw — none of the current
+   * ones do; `App.tsx`'s load functions already catch their own parse errors
+   * and report them as a `loadError` event instead. `id` is `null` rather
+   * than absent so one LabVIEW cluster unflattens every envelope this file
+   * returns. */
   function raw(fn: () => void): string {
-    try {
+    return safe(() => {
       fn();
-      return JSON.stringify({ ok: true, result: null });
+      return toAsciiJson({ ok: true, result: null, id: null });
+    });
+  }
+
+  /** Both poll methods drain first and serialise second, so a payload that
+   * will not stringify cannot be retried — it is already out of the queue.
+   * The fallback is still an array, because the Helper Loop's unflatten
+   * expects one: a `pollError` event in place of the batch says the events
+   * were lost, where an `{"ok":false}` object would only fail to unflatten. */
+  function poll(serialise: (events: readonly BridgeEvent[]) => string): string {
+    const events = queue.drain();
+    try {
+      return serialise(events);
     } catch (err) {
-      return JSON.stringify({ ok: false, error: message(err) });
+      return serialise([{ type: 'pollError', payload: { message: message(err) }, at: Date.now() }]);
     }
   }
 
@@ -204,39 +446,96 @@ export function installBridge(handlers: BridgeHandlers): InstalledBridge {
     loadRuleFile: (text, fileName) =>
       raw(() => handlers.loadRuleFile(text, fileName ?? 'rules.yaml')),
     loadLayout: (text, fileName) => raw(() => handlers.loadLayout(text, fileName ?? 'layout.json')),
-    handleCommand(text: string): void {
-      let command: Command;
-      try {
-        command = parseCommand(text);
-      } catch (err) {
-        queue.push('commandError', { message: message(err), raw: text });
-        return;
-      }
-      try {
-        dispatch(command, handlers, queue);
-      } catch (err) {
-        queue.push('commandError', { id: command.id, type: command.type, message: message(err) });
-      }
+    handleCommand(text: string): string {
+      return safe(() => {
+        let command: Command;
+        try {
+          command = parseCommand(text);
+        } catch (err) {
+          const id = peekCommandId(text);
+          emit('commandError', { id, message: message(err), raw: text });
+          return toAsciiJson({ ok: false, error: message(err), id });
+        }
+        try {
+          dispatch(command, handlers, emit, onSelectStep);
+        } catch (err) {
+          emit('commandError', { id: command.id, type: command.type, message: message(err) });
+          return toAsciiJson({ ok: false, error: message(err), id: command.id });
+        }
+        // Accepted, not finished: exportPng reports its own result later.
+        return toAsciiJson({ ok: true, id: command.id });
+      });
     },
     handleCommandSync(text: string): string {
+      // Not `safe`: the id is only known once the command has parsed, and
+      // `safe` takes its id up front. The envelope is the same either way.
+      let id: string | null = null;
       try {
         const command = parseCommand(text);
-        const result = dispatch(command, handlers, queue);
-        return JSON.stringify({ ok: true, result: result ?? null });
+        id = command.id;
+        const result = dispatch(command, handlers, emit, onSelectStep);
+        return toAsciiJson({ ok: true, result: result ?? null, id });
       } catch (err) {
-        return JSON.stringify({ ok: false, error: message(err) });
+        return toAsciiJson({ ok: false, error: message(err), id: id ?? peekCommandId(text) });
       }
     },
     pollEvents(): string {
-      return serialiseEvents(queue.drain());
+      return poll(serialiseEvents);
     },
+    pollEventsFlat(): string {
+      return poll(serialiseEventsFlat);
+    },
+    setEventSink(next: EventSink | null): number {
+      if (typeof next !== 'function') {
+        sink = null;
+        return 0;
+      }
+      // Drain before attaching: anything queued while nobody was listening is
+      // the host's own backlog, and it wants it in order, ahead of whatever
+      // the next click produces.
+      const pending = queue.drain();
+      sink = next;
+      for (let i = 0; i < pending.length; i++) {
+        try {
+          next(pending[i]!);
+        } catch (err) {
+          detach(pending.slice(i), err);
+          return i;
+        }
+      }
+      return pending.length;
+    },
+    attachLabVIEW: (refnum) =>
+      safe(() => {
+        if (typeof refnum !== 'number' || !Number.isFinite(refnum)) {
+          throw new BridgeError(`refnum must be a number, got ${JSON.stringify(refnum)}`);
+        }
+        if (refnum === labview) return '0';
+        labview = refnum;
+        const pending = [{ type: 'bridgeReady', payload: null, at: Date.now() }, ...queue.drain()];
+        let sent = 0;
+        for (const e of pending) {
+          if (pushToLabVIEW(refnum, e)) sent++;
+          else queue.pushEvent(e);
+        }
+        return String(sent);
+      }),
+    isReady: () => safe(() => String(ready)),
+    ping: () => safe(() => 'pong'),
+    version: () => safe(() => BRIDGE_PROTOCOL_VERSION),
   };
 
   window.SeqFlowBridge = api;
+  ready = true;
 
   return {
-    enqueue: (type, payload) => queue.push(type, payload),
+    enqueue: (type, payload) => {
+      if (type === 'stepSelected') selectionEvent(payload);
+      else emit(type, payload);
+    },
     dispose: () => {
+      sink = null;
+      labview = null;
       delete window.SeqFlowBridge;
     },
   };
