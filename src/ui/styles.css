@@ -174,10 +174,8 @@ button.tool:disabled {
 }
 
 /*
- * The seam between the two views (`SplitBar.tsx`). Always present, in all
- * three view modes — it carries the right-click menu that brings a hidden
- * view back, so it is the one piece of chrome that can never be conditional.
- * `useResizable` (App.tsx) drives the drag, but only in `both`.
+ * The seam between the two views (`SplitBar.tsx`). The view mode is set only
+ * over the bridge. `useResizable` (App.tsx) drives the drag, but only in `both`.
  */
 .split-bar {
   flex: 0 0 6px;
@@ -194,54 +192,13 @@ button.tool:disabled {
   background: var(--accent-soft);
 }
 
-/* Positioned at the pointer, so `fixed` rather than absolute — it must not be
- * clipped by the 6px strip it belongs to. */
-.view-menu {
-  position: fixed;
-  z-index: 60;
-  min-width: 190px;
-  padding: 4px;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--bg-panel);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18);
-}
-
-.view-menu button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border: 0;
-  border-radius: 4px;
-  background: none;
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.view-menu button:hover {
-  background: var(--hover-bg);
-}
-
-.view-menu button.on {
-  color: var(--accent);
-}
-
-.view-menu .tick {
-  margin-left: auto;
-}
-
 /*
  * The canvas is the point of the app when it is shown; the side panel gives
  * way to it. `[hidden]` — not just a dimmed or zero-width state — so a click
  * meant for the tree can never land on a canvas the toolbar says is off.
  */
 .canvas-wrap {
+  background: #fff;
   flex: 1 1 auto;
   min-width: 280px;
   position: relative;
@@ -251,49 +208,12 @@ button.tool:disabled {
   display: none;
 }
 
-/*
- * A small floating settings button — the only other persistent chrome beside
- * the flowchart toggle, now that the toolbar header and the bottom drawer are
- * both gone. Opens the settings panel (`.drawer`, restyled as an overlay
- * below) rather than a permanent strip of controls.
- */
-.settings-gear {
-  position: fixed;
-  top: 10px;
-  right: 10px;
-  z-index: 30;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  border: 1px solid var(--line);
-  background: var(--bg-raised);
-  color: var(--text-dim);
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
-}
-
-.settings-gear:hover:not(:disabled),
-.settings-gear[aria-pressed='true'] {
-  border-color: var(--accent);
-  color: var(--text);
-}
-
-.settings-gear:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
 /* ------------------------------------------------------------------ icon */
 
 /*
  * Material Symbols, inlined as paths (`Icon.tsx`). Sized in `em` and filled
  * with `currentColor`, so an icon inherits the size and colour of the control
- * it sits in — that is what lets the outline's four text sizes scale the log
+ * it sits in — that is what lets the outline's text size scale the log
  * ticks and the twisties without a single per-size rule. `flex: none` keeps
  * one from being squeezed to nothing inside a flex row that runs out of width.
  */
@@ -306,9 +226,6 @@ button.tool:disabled {
 
 .banner {
   padding: 9px 12px;
-  /* Clears the fixed settings gear, which sits at the same top-right corner
-   * regardless of whether a banner is showing. */
-  padding-right: 48px;
   font-size: 12px;
   display: flex;
   align-items: flex-start;
@@ -1190,127 +1107,6 @@ pre.xml {
 button.tool.on {
   border-color: var(--accent);
   background: var(--accent-soft);
-}
-
-/* ---------------------------------------------------------------- drawer */
-
-/*
- * The settings panel — a right-side overlay, not a bottom-docked bar. An
- * embedded LabVIEW panel has no room for a permanent strip of tab chrome, so
- * `.drawer` is entirely hidden until the gear button opens it, and then it
- * takes the full viewport height rather than trading a fixed height against
- * whichever tab happens to be active (the old `.tall` variant this replaced
- * existed only because a bottom bar had a height to negotiate at all).
- */
-.drawer {
-  display: none;
-}
-
-.drawer.open {
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(480px, 92vw);
-  min-height: 0;
-  background: var(--bg-panel);
-  border-left: 1px solid var(--line);
-  box-shadow: -6px 0 18px rgba(0, 0, 0, 0.15);
-  z-index: 25;
-  padding-left: 10px;
-}
-
-.drawer-tabs {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 2px 0;
-  padding: 5px 8px;
-  flex: 0 0 auto;
-  border-bottom: 1px solid var(--line);
-}
-
-.drawer-tabs .spacer {
-  flex: 1;
-}
-
-/*
- * The cluster label. Small, unclickable, and it doubles as the divider — a rule
- * on its left edge — so grouping the nine tabs costs one row of chrome and no
- * extra click. Hidden from assistive tech: the tab order already reads in
- * cluster order, and a decorative word between buttons is noise there.
- */
-.drawer-tabs .tab-group {
-  margin: 0 6px 0 10px;
-  padding-left: 11px;
-  border-left: 1px solid var(--line);
-  color: var(--text-faint);
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  user-select: none;
-  white-space: nowrap;
-}
-
-.drawer-tabs .tab-group:first-child {
-  margin-left: 0;
-  padding-left: 0;
-  border-left: none;
-}
-
-.drawer-tabs button {
-  background: none;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  color: var(--text-faint);
-  font: inherit;
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding: 6px 9px 5px;
-  cursor: pointer;
-}
-
-.drawer-tabs button:hover {
-  color: var(--text-dim);
-}
-
-.drawer-tabs button.on {
-  color: var(--text);
-  border-bottom-color: var(--accent);
-}
-
-.drawer-tabs button b {
-  margin-left: 6px;
-  font-family: var(--mono);
-  font-weight: 600;
-  opacity: 0.6;
-}
-
-.drawer-tabs .collapse {
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 11px;
-}
-
-.drawer-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.drawer-list.wide {
-  flex: 1;
-  overflow-y: auto;
-  padding: 4px 0 8px;
-}
-
-.drawer-list > .hint {
-  padding: 10px 12px;
 }
 
 .detail-path {

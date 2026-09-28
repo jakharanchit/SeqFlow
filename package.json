@@ -1,7 +1,7 @@
 {
   "name": "seqflow",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.2.0",
   "type": "module",
   "description": "Test sequence XML to interactive flowchart. Read-only.",
   "engines": {

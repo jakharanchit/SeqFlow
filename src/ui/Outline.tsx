@@ -58,31 +58,22 @@ export interface OutlineProps {
   searching: boolean;
 
   /** How large the tree's rows render. Persisted by the caller. */
-  textSize: OutlineTextSize;
-  onTextSizeChange: (size: OutlineTextSize) => void;
+  textSize: number;
+  onTextSizeChange: (size: number) => void;
 
   /**
-   * Description/Log Start/Log Completion each hideable from the View tab's
-   * show/hide section — that control lives in `Drawer.tsx`, so the set itself
-   * is owned by `App.tsx` and only read here.
+   * Description/Log Start/Log Completion, each hideable. The set is persisted
+   * and owned by `App.tsx` and only read here.
    */
   hiddenColumns: ReadonlySet<HideableColumn>;
 }
 
 /**
- * Row font-size/height pairs, biggest lever a reader has over how much of the
- * tree fits on screen at once. `row` also drives the windowing arithmetic
- * below and is applied to the DOM as `--outline-row-height`, so this table is
- * the one place both have to agree — there is no second copy to drift.
+ * Row height for a font size in px. It drives the windowing arithmetic below
+ * and is applied to the DOM as `--outline-row-height`, so this is the one
+ * place both have to agree. Matches the old fixed sizes: 12→22, 16→30.
  */
-export const OUTLINE_SIZES = [
-  { level: 'S', font: 11, row: 20 },
-  { level: 'M', font: 12, row: 22 },
-  { level: 'L', font: 14, row: 26 },
-  { level: 'XL', font: 16, row: 30 },
-] as const;
-
-export type OutlineTextSize = (typeof OUTLINE_SIZES)[number]['level'];
+const rowHeightFor = (font: number): number => 2 * font - 2;
 
 interface Row {
   node: SeqNode;
@@ -276,9 +267,7 @@ export function Outline({
   onTextSizeChange,
   hiddenColumns,
 }: OutlineProps): React.JSX.Element {
-  const sizeIndex = OUTLINE_SIZES.findIndex((s) => s.level === textSize);
-  const size = OUTLINE_SIZES[sizeIndex < 0 ? 1 : sizeIndex]!;
-  const ROW_HEIGHT = size.row;
+  const ROW_HEIGHT = rowHeightFor(textSize);
 
   /**
    * One resizable width per column, independent of the others — Step and
@@ -317,8 +306,8 @@ export function Outline({
   ]);
 
   const rowStyle = {
-    '--outline-font-size': `${size.font}px`,
-    '--outline-row-height': `${size.row}px`,
+    '--outline-font-size': `${textSize}px`,
+    '--outline-row-height': `${ROW_HEIGHT}px`,
     '--outline-cols': outlineCols,
   } as React.CSSProperties;
 
@@ -661,8 +650,8 @@ export function Outline({
           <div className="outline-textsize" role="group" aria-label="Tree text size">
             <button
               type="button"
-              disabled={sizeIndex <= 0}
-              onClick={() => onTextSizeChange(OUTLINE_SIZES[Math.max(0, sizeIndex - 1)]!.level)}
+              // ponytail: 2 px floor only because a zero/negative row height breaks windowing.
+              onClick={() => onTextSizeChange(Math.max(2, textSize - 1))}
               title="Smaller text"
               aria-label="Smaller text"
             >
@@ -670,10 +659,7 @@ export function Outline({
             </button>
             <button
               type="button"
-              disabled={sizeIndex >= OUTLINE_SIZES.length - 1}
-              onClick={() =>
-                onTextSizeChange(OUTLINE_SIZES[Math.min(OUTLINE_SIZES.length - 1, sizeIndex + 1)]!.level)
-              }
+              onClick={() => onTextSizeChange(textSize + 1)}
               title="Larger text"
               aria-label="Larger text"
             >

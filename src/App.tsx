@@ -34,10 +34,9 @@ import { blobToBase64, installBridge, type InstalledBridge } from './bridge/inst
 import { isViewMode, type ExecStatus, type StepStatusPayload, type ViewMode } from './bridge/protocol';
 import { svgToPng } from './ui/raster';
 import { Canvas, type FocusRequest } from './ui/Canvas';
-import { Drawer, type DrawerTab } from './ui/Drawer';
 import { Icon } from './ui/Icon';
 import { SplitBar } from './ui/SplitBar';
-import { Outline, type HideableColumn, type OutlineTextSize } from './ui/Outline';
+import { Outline, type HideableColumn } from './ui/Outline';
 import { usePersistedState, useResizable } from './ui/useResizable';
 import './ui/styles.css';
 
@@ -91,12 +90,6 @@ export function App(): React.JSX.Element {
     file: null,
   });
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(NO_COLLAPSE);
-  /**
-   * How many sequences the *tool* folded on load, as opposed to the reader.
-   * Shown once in the toolbar: a file that opens folded has to say so, or it
-   * reads as a file with fewer steps than it has.
-   */
-  const [autoFolded, setAutoFolded] = useState(0);
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [edges, setEdges] = useState<FlowEdge[]>([]);
   /**
@@ -113,7 +106,6 @@ export function App(): React.JSX.Element {
    * set, and that starts a fresh ELK pass that would overwrite them.
    */
   const [sidecar, setSidecar] = useState<Sidecar | null>(null);
-  const [elapsedMs, setElapsedMs] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -122,17 +114,8 @@ export function App(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [layoutKey, setLayoutKey] = useState(0);
-  /**
-   * Bumped by Re-layout. Before Phase 3 that button only refit the viewport,
-   * which was harmless while nothing could move a node but a drag nobody kept.
-   * Now a sidecar can, so the button has to mean what its tooltip says: a
-   * fresh ELK pass, discarding every manual position.
-   */
-  const [pass, setPass] = useState(0);
   const [text, setText] = useState('');
   const [elements, setElements] = useState<ReadonlySet<string>>(NO_COLLAPSE);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<DrawerTab>('view');
   /**
    * Live per-step execution status, pushed in over the LabVIEW bridge as a
    * test runs — see `bridge/install.ts`. Empty until something calls
@@ -160,10 +143,14 @@ export function App(): React.JSX.Element {
     Math.min(1100, window.innerWidth * 0.75),
     'horizontal',
   );
-  const [outlineTextSize, setOutlineTextSize] = usePersistedState<OutlineTextSize>(
-    'seqflow.outlineTextSize',
-    'M',
-    (raw) => (raw === 'S' || raw === 'M' || raw === 'L' || raw === 'XL' ? raw : 'M'),
+  const [outlineTextSize, setOutlineTextSize] = usePersistedState<number>(
+    'seqflow.outlineFontPx',
+    12,
+    (raw) => {
+      const n = Number(raw);
+      return Number.isFinite(n) && n >= 2 ? n : 12;
+    },
+    (v) => String(v),
   );
   /**
    * Which view is showing. Replaces a `flowchartVisible` boolean: three named
@@ -186,12 +173,10 @@ export function App(): React.JSX.Element {
   );
   /**
    * Which of the tree's three optional columns are hidden — Step never joins
-   * this set, it is the tree. The toggle lives in the View tab (`Drawer.tsx`),
-   * so the set is owned here rather than inside `Outline.tsx` itself; the
-   * per-column *widths* stay local to `Outline.tsx` since nothing else reads
-   * them.
+   * this set, it is the tree. Read from storage only; the per-column *widths*
+   * stay local to `Outline.tsx` since nothing else reads them.
    */
-  const [hiddenColumns, setHiddenColumns] = usePersistedState<ReadonlySet<HideableColumn>>(
+  const [hiddenColumns] = usePersistedState<ReadonlySet<HideableColumn>>(
     'seqflow.outlineColsHidden',
     new Set<HideableColumn>(),
     (raw) =>
@@ -201,14 +186,6 @@ export function App(): React.JSX.Element {
           .filter((s): s is HideableColumn => s === 'desc' || s === 'logStart' || s === 'logCompletion'),
       ),
     (set) => [...set].join(','),
-  );
-  const toggleColumn = useCallback(
-    (column: HideableColumn): void => {
-      const next = new Set(hiddenColumns);
-      if (!next.delete(column)) next.add(column);
-      setHiddenColumns(next);
-    },
-    [hiddenColumns, setHiddenColumns],
   );
 
   // Guards against a slow layout from an earlier file or toggle landing after
@@ -390,15 +367,12 @@ export function App(): React.JSX.Element {
                 message: `layout file: ${restored.unknown.length} saved position${restored.unknown.length === 1 ? ' is' : 's are'} for steps this sequence no longer has, and ${restored.unknown.length === 1 ? 'was' : 'were'} dropped. ${restored.placed} restored.`,
               },
             ]);
-            setSettingsTab('view');
-            setSettingsOpen(true);
           }
           setSidecar(null);
         }
         setNodes(laid);
         setEdges(flow.edges);
         setRoutes(placed.routes);
-        setElapsedMs(placed.elapsedMs);
         setLayoutKey((k) => k + 1);
       })
       .catch((err: unknown) => {
@@ -415,7 +389,7 @@ export function App(): React.JSX.Element {
       .finally(() => {
         if (ticket === run.current) setBusy(false);
       });
-  }, [graph, view, collapsed, sidecar, pass, layoutCache, ruleSet.rules]);
+  }, [graph, view, collapsed, sidecar, layoutCache, ruleSet.rules]);
 
   /**
    * Parse and show a sequence. `withRules` lets a newly dropped rule file
@@ -437,7 +411,6 @@ export function App(): React.JSX.Element {
       // for anything under the budget, so the usual case is untouched.
       const folded = autoCollapse(parsed, LAYOUT_BUDGET);
       setCollapsed(folded.size === 0 ? NO_COLLAPSE : folded);
-      setAutoFolded(folded.size);
       setWarnings(parsed.warnings);
       setSelected(null);
       setFocus(null);
@@ -445,12 +418,6 @@ export function App(): React.JSX.Element {
       // load — even a re-drop of the same file — has to be read as "nothing
       // has run yet", not as the previous run's steps still lit.
       setExecutionStatus(new Map());
-      // A warning has to be seen. The drawer opens itself rather than relying
-      // on a banner the reader can dismiss and never look at again.
-      if (parsed.warnings.length > 0) {
-        setSettingsTab('view');
-        setSettingsOpen(true);
-      }
     } catch (err) {
       const message =
         err instanceof ParseError || err instanceof Error
@@ -460,7 +427,6 @@ export function App(): React.JSX.Element {
       setLoaded(null);
       setWarnings([]);
       setBusy(false);
-      setAutoFolded(0);
     }
     },
     [],
@@ -493,8 +459,6 @@ export function App(): React.JSX.Element {
     const source = sourceRef.current;
     if (source === null) {
       setError(null);
-      setSettingsTab('view');
-      setSettingsOpen(true);
       return;
     }
     load(source.xml, source.fileName, next);
@@ -613,12 +577,6 @@ export function App(): React.JSX.Element {
   }, [graph]);
 
   const expandAll = useCallback((): void => setCollapsed(NO_COLLAPSE), []);
-
-  /** Its tooltip promises manual positions are discarded, so discard them. */
-  const relayout = useCallback((): void => {
-    setSidecar(null);
-    setPass((p) => p + 1);
-  }, []);
 
   const onNodesChange = useCallback((changes: unknown[]): void => {
     setNodes(
@@ -897,25 +855,6 @@ export function App(): React.JSX.Element {
   warningsRef.current = warnings;
 
   const showBanner = !dismissed && error !== null;
-  const visibleCount = view?.nodes.size ?? 0;
-
-  /** The toolbar/header controls, relocated into the settings panel's View
-   * tab now that there is no header — see `Drawer.tsx`'s `ViewInfo`. */
-  const viewInfo = {
-    visibleCount,
-    totalCount: graph?.nodes.size ?? 0,
-    edgeCount: edges.length,
-    elapsedMs,
-    autoFolded,
-    onRelayout: relayout,
-    busy,
-    rulesFile: ruleSet.file,
-    onClearRules: clearRuleFile,
-    showMinimap,
-    onShowMinimap: setShowMinimap,
-    hiddenColumns,
-    onToggleColumn: toggleColumn,
-  };
 
   /* `hidden`, not a zero width: a pane the seam says is off must not be able
    * to take a click meant for the one that is on. */
@@ -985,7 +924,6 @@ export function App(): React.JSX.Element {
 
         <SplitBar
           mode={viewMode}
-          onMode={setViewMode}
           onHandleDown={outlinePanel.onHandleDown}
           onReset={outlinePanel.reset}
         />
@@ -1010,37 +948,6 @@ export function App(): React.JSX.Element {
           )}
         </div>
       </div>
-
-      <button
-        type="button"
-        className="settings-gear"
-        disabled={graph === null}
-        onClick={() => setSettingsOpen(!settingsOpen)}
-        title="Settings"
-        aria-label="Settings"
-        aria-pressed={settingsOpen}
-      >
-        <Icon name="settings" />
-      </button>
-
-      <Drawer
-        graph={graph}
-        view={viewInfo}
-        rules={ruleSet.rules}
-        fileName={loaded?.fileName ?? 'sequence.xml'}
-        nodes={renderNodes}
-        edges={renderEdges}
-        routes={routes}
-        highlighted={matches !== null}
-        collapsed={collapsed}
-        warnings={warnings}
-        open={settingsOpen}
-        tab={settingsTab}
-        selected={selected}
-        onTab={setSettingsTab}
-        onOpen={setSettingsOpen}
-        onSelect={reveal}
-      />
     </div>
   );
 }
