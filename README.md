@@ -7,7 +7,7 @@ Test-automation tools export their sequences as XML — steps, branches, jump
 targets, pass/fail criteria — but the XML itself is not something anyone
 reviews line by line. SeqFlow parses that file into a graph and renders it as
 a flowchart and a step tree side by side: collapsible sequences, search by
-name or step number, and live execution status pushed in from LabVIEW. It
+name or step number, and a bridge a LabVIEW panel can drive it through. It
 never writes back to the source file.
 
 Built for reviewing automated test procedures in a regulated setting, where
@@ -24,8 +24,7 @@ of a few thousand lines of GUIDs.
 - **Search** — find a step by name or step number (`2.3.6.8`), or narrow the
   tree by step type.
 - **LabVIEW bridge** — `window.SeqFlowBridge` lets a LabVIEW panel load
-  files, select steps, colour steps by execution status, switch views, and
-  export Mermaid, SVG or PNG. See [docs/LABVIEW-EVENTS.md](docs/LABVIEW-EVENTS.md).
+  files, select steps, switch views, and export Mermaid, SVG or PNG. See [docs/LABVIEW-EVENTS.md](docs/LABVIEW-EVENTS.md).
 - **Layout files** — a layout sidecar saved by an earlier build still loads,
   restoring node positions and the collapsed set.
 - **CLI** — `--check` for CI staleness gates, `--profile` for what a rule

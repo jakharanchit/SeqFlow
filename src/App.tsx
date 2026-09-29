@@ -31,7 +31,7 @@ import { toSvg } from './emit/svg';
 import { LayoutTimeout, layout, type LayoutResult } from './layout/elk';
 import type { Point } from './layout/elkGraph';
 import { blobToBase64, installBridge, type InstalledBridge } from './bridge/install';
-import { isViewMode, type ExecStatus, type StepStatusPayload, type ViewMode } from './bridge/protocol';
+import { isViewMode, type ViewMode } from './bridge/protocol';
 import { svgToPng } from './ui/raster';
 import { Canvas, type FocusRequest } from './ui/Canvas';
 import { Icon } from './ui/Icon';
@@ -68,16 +68,6 @@ const LAYOUT_BUDGET = 600;
 /** Distinct arrangements kept per file. A fold and its undo are two. */
 const LAYOUT_CACHE_LIMIT = 12;
 
-/** Highest-attention execution status wins when lifting several onto one
- * folded sequence node — see `execLight` below. */
-const EXEC_PRIORITY: Record<ExecStatus, number> = {
-  fail: 4,
-  running: 3,
-  pending: 2,
-  pass: 1,
-  skipped: 0,
-};
-
 export function App(): React.JSX.Element {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   /** The rule file in force: the built-in one until a `.yaml` is dropped or sent. */
@@ -109,15 +99,6 @@ export function App(): React.JSX.Element {
   const [layoutKey, setLayoutKey] = useState(0);
   const [text, setText] = useState('');
   const [elements, setElements] = useState<ReadonlySet<string>>(NO_COLLAPSE);
-  /**
-   * Live per-step execution status, pushed in over the LabVIEW bridge as a
-   * test runs — see `bridge/install.ts`. Empty until something calls
-   * `setStepStatus`/`setStepStatuses`; a plain browser session never touches
-   * it.
-   */
-  const [executionStatus, setExecutionStatus] = useState<ReadonlyMap<string, ExecStatus>>(
-    new Map(),
-  );
 
   /* ---------------------------------------------------------------- */
   /* LabVIEW-embedded shell: panel sizing, text size, flowchart toggle   */
@@ -407,10 +388,6 @@ export function App(): React.JSX.Element {
       setWarnings(parsed.warnings);
       setSelected(null);
       setFocus(null);
-      // A running status belongs to a test run against *this* file. A new
-      // load — even a re-drop of the same file — has to be read as "nothing
-      // has run yet", not as the previous run's steps still lit.
-      setExecutionStatus(new Map());
     } catch (err) {
       const message =
         err instanceof ParseError || err instanceof Error
@@ -631,30 +608,6 @@ export function App(): React.JSX.Element {
     revealRef.current(uid);
   }, []);
 
-  const bridgeSetStepStatus = useCallback((uid: string, status: ExecStatus): void => {
-    setExecutionStatus((current) => {
-      const next = new Map(current);
-      next.set(uid, status);
-      return next;
-    });
-  }, []);
-
-  const bridgeSetStepStatuses = useCallback(
-    (entries: readonly StepStatusPayload[]): void => {
-      if (entries.length === 0) return;
-      setExecutionStatus((current) => {
-        const next = new Map(current);
-        for (const { uid, status } of entries) next.set(uid, status);
-        return next;
-      });
-    },
-    [],
-  );
-
-  const bridgeResetExecution = useCallback((): void => {
-    setExecutionStatus(new Map());
-  }, []);
-
   const bridgeSetView = useCallback((mode: ViewMode): void => {
     setViewModeRef.current(mode);
   }, []);
@@ -712,9 +665,6 @@ export function App(): React.JSX.Element {
       loadLayout,
       clearRuleFile,
       selectStep: bridgeSelectStep,
-      setStepStatus: bridgeSetStepStatus,
-      setStepStatuses: bridgeSetStepStatuses,
-      resetExecution: bridgeResetExecution,
       setView: bridgeSetView,
       exportMermaid: bridgeExportMermaid,
       exportSvg: bridgeExportSvg,
@@ -732,9 +682,6 @@ export function App(): React.JSX.Element {
     loadLayout,
     clearRuleFile,
     bridgeSelectStep,
-    bridgeSetStepStatus,
-    bridgeSetStepStatuses,
-    bridgeResetExecution,
     bridgeSetView,
     bridgeExportMermaid,
     bridgeExportSvg,
@@ -780,31 +727,6 @@ export function App(): React.JSX.Element {
     return new Set([...raw].map((uid) => view.lifted.get(uid) ?? uid));
   }, [view, filtering, results]);
 
-  /**
-   * Live execution status, lifted through the collapse view the same way
-   * every other overlay is — a status reported for a step hidden inside a
-   * folded sequence has to land *somewhere* visible, or folding a sequence
-   * while a test runs would go dark for it.
-   *
-   * A folded sequence can stand in for several statuses at once (steps at
-   * different stages inside it), so lifting takes the most attention-worthy
-   * one rather than the last one written: a single `fail` inside a folded
-   * group must not be overwritten by nine `pass`es that happen to be later in
-   * iteration order.
-   */
-  const execLight = useMemo(() => {
-    if (view === null || executionStatus.size === 0) return null;
-    const lifted = new Map<string, ExecStatus>();
-    for (const [uid, status] of executionStatus) {
-      const target = view.lifted.get(uid) ?? uid;
-      const current = lifted.get(target);
-      if (current === undefined || EXEC_PRIORITY[status] > EXEC_PRIORITY[current]) {
-        lifted.set(target, status);
-      }
-    }
-    return lifted;
-  }, [view, executionStatus]);
-
   /* Selection is app state; React Flow is told about it rather than owning it. */
   const renderNodes = useMemo(
     () =>
@@ -815,17 +737,12 @@ export function App(): React.JSX.Element {
         // group, and dims like any other node.
         const isGroup = n.type === 'seqGroup';
         const dim = !isGroup && matches !== null && !matches.has(n.id);
-        // Execution status says what LabVIEW reported for the step,
-        // independent of whether it is dimmed.
-        const exec = isGroup ? undefined : execLight?.get(n.id);
-        const className = [dim ? 'dimmed' : '', exec === undefined ? '' : `exec-${exec}`]
-          .filter(Boolean)
-          .join(' ');
+        const className = dim ? 'dimmed' : '';
         const isSelected = n.id === selected;
         if (n.selected === isSelected && (n.className ?? '') === className) return n;
         return { ...n, selected: isSelected, className };
       }),
-    [nodes, selected, matches, execLight],
+    [nodes, selected, matches],
   );
 
   const renderEdges = useMemo(

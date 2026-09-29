@@ -39,7 +39,7 @@
  * `(text, fileName)` shape. Building a `{type, payload}` envelope for these
  * on the LabVIEW side means Bundle by Name and Flatten to JSON before a
  * single string ever reaches this page, which is ceremony the general
- * envelope earns everywhere else (12 command shapes through one dispatch
+ * envelope earns everywhere else (10 command shapes through one dispatch
  * surface) but not here, where the whole payload
  * *is* the string LabVIEW already has in hand. `Arg` is the file's text,
  * verbatim — not JSON, so pasting raw XML straight into Execute JavaScript's
@@ -78,8 +78,6 @@ import {
   EventQueue,
   asFilePayload,
   asSelectStepPayload,
-  asStepStatusPayload,
-  asStepStatusesPayload,
   asViewPayload,
   parseCommand,
   peekCommandId,
@@ -89,8 +87,6 @@ import {
   type BridgeEvent,
   type Command,
   type EventOrigin,
-  type ExecStatus,
-  type StepStatusPayload,
   type ViewMode,
 } from './protocol';
 import { pushToLabVIEW, toAsciiJson } from './labview';
@@ -109,9 +105,6 @@ export interface BridgeHandlers {
   loadLayout(text: string, fileName: string): void;
   clearRuleFile(): void;
   selectStep(uid: string): void;
-  setStepStatus(uid: string, status: ExecStatus): void;
-  setStepStatuses(entries: readonly StepStatusPayload[]): void;
-  resetExecution(): void;
   setView(view: ViewMode): void;
   exportMermaid(): string;
   exportSvg(): string;
@@ -261,19 +254,6 @@ function dispatch(
       handlers.setView(p.view);
       return null;
     }
-    case 'setStepStatus': {
-      const p = asStepStatusPayload(command.payload);
-      handlers.setStepStatus(p.uid, p.status);
-      return null;
-    }
-    case 'setStepStatuses': {
-      const p = asStepStatusesPayload(command.payload);
-      handlers.setStepStatuses(p.statuses);
-      return null;
-    }
-    case 'resetExecution':
-      handlers.resetExecution();
-      return null;
     case 'exportMermaid':
       return handlers.exportMermaid();
     case 'exportSvg':

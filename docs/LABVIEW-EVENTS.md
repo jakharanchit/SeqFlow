@@ -117,7 +117,7 @@ Notes that matter on the LabVIEW side:
   `{"ok":true,"result":null,"id":null}`, and the next poll carries
   `loadError` with
   `bad.xml: document element <nope> contains no steps — is this a test sequence? …`.
-  Everything else — `selectStep`, `setView`, the status commands — is
+  Everything else — `selectStep`, `setView`, `clearRuleFile` — is
   genuinely done when the envelope comes back.
 - **`id` is echoed even when parsing failed**, best-effort: a command whose
   `type` is unknown still has its `id` read back out of the raw text, so a
@@ -242,18 +242,17 @@ type — which is what makes it hard to unflatten into a LabVIEW cluster and why
 ### 2.3 A real poll, from the fixture
 
 `pollEventsFlat()` after selecting step 2.1.6.7 in `fixtures/Sequence_XML.xml`,
-loading the file, switching view, clearing the selection and resetting
-execution — generated from the real parse, not hand-written:
+loading the file, switching view and clearing the selection — generated from
+the real parse, not hand-written:
 
 ```json
-[{"type":"stepSelected","at":1789999921302,"payload":"{\"uid\":\"10000110-0000-0000-0000-000000004000\",\"name\":\"4R Cycle (10s)\",\"stepNumber\":\"2.1.6.7\",\"numbered\":\"2.1.6.7 - 4R Cycle (10s)\",\"element\":\"WaitStep\",\"kind\":\"action\",\"path\":\"XTR Module Test \\u203a Main \\u203a Cycle 1 - 4R \\u203a Draw down at 4R\"}","origin":"user"},{"type":"fileLoaded","at":1789999921302,"payload":"{\"fileName\":\"Sequence_XML.xml\",\"nodeCount\":133,\"warnings\":0}"},{"type":"viewChanged","at":1789999921302,"payload":"{\"view\":\"both\"}"},{"type":"stepSelected","at":1789999921302,"payload":"null","origin":"user"},{"type":"resetExecution","at":1789999921302,"payload":"null"}]
+[{"type":"stepSelected","at":1789999921302,"payload":"{\"uid\":\"10000110-0000-0000-0000-000000004000\",\"name\":\"4R Cycle (10s)\",\"stepNumber\":\"2.1.6.7\",\"numbered\":\"2.1.6.7 - 4R Cycle (10s)\",\"element\":\"WaitStep\",\"kind\":\"action\",\"path\":\"XTR Module Test \\u203a Main \\u203a Cycle 1 - 4R \\u203a Draw down at 4R\"}","origin":"user"},{"type":"fileLoaded","at":1789999921302,"payload":"{\"fileName\":\"Sequence_XML.xml\",\"nodeCount\":133,\"warnings\":0}"},{"type":"viewChanged","at":1789999921302,"payload":"{\"view\":\"both\"}"},{"type":"stepSelected","at":1789999921302,"payload":"null","origin":"user"}]
 ```
 
-The same five through `pollEvents()`, for comparison — note the last one has
-no `payload` key:
+The same four through `pollEvents()`, for comparison:
 
 ```json
-[{"type":"stepSelected","payload":{"uid":"10000110-0000-0000-0000-000000004000","name":"4R Cycle (10s)","stepNumber":"2.1.6.7","numbered":"2.1.6.7 - 4R Cycle (10s)","element":"WaitStep","kind":"action","path":"XTR Module Test \u203a Main \u203a Cycle 1 - 4R \u203a Draw down at 4R"},"at":1789999921302,"origin":"user"},{"type":"fileLoaded","payload":{"fileName":"Sequence_XML.xml","nodeCount":133,"warnings":0},"at":1789999921302},{"type":"viewChanged","payload":{"view":"both"},"at":1789999921302},{"type":"stepSelected","payload":null,"at":1789999921302,"origin":"user"},{"type":"resetExecution","at":1789999921302}]
+[{"type":"stepSelected","payload":{"uid":"10000110-0000-0000-0000-000000004000","name":"4R Cycle (10s)","stepNumber":"2.1.6.7","numbered":"2.1.6.7 - 4R Cycle (10s)","element":"WaitStep","kind":"action","path":"XTR Module Test \u203a Main \u203a Cycle 1 - 4R \u203a Draw down at 4R"},"at":1789999921302,"origin":"user"},{"type":"fileLoaded","payload":{"fileName":"Sequence_XML.xml","nodeCount":133,"warnings":0},"at":1789999921302},{"type":"viewChanged","payload":{"view":"both"},"at":1789999921302},{"type":"stepSelected","payload":null,"at":1789999921302,"origin":"user"}]
 ```
 
 ### 2.4 `setEventSink()` — the generic JS push
@@ -347,7 +346,7 @@ payload-less event:
 
 ```json
 {"type":"stepSelected","at":1789999921302,"origin":"user","payload":"{\"uid\":\"10000110-0000-0000-0000-000000004000\",\"name\":\"4R Cycle (10s)\",\"stepNumber\":\"2.1.6.7\",\"numbered\":\"2.1.6.7 - 4R Cycle (10s)\",\"element\":\"WaitStep\",\"kind\":\"action\",\"path\":\"XTR Module Test › Main › Cycle 1 - 4R › Draw down at 4R\"}"}
-{"type":"resetExecution","at":1789999921302,"origin":"","payload":"null"}
+{"type":"bridgeReady","at":1789999921302,"origin":"","payload":"null"}
 ```
 
 **Version floor: LabVIEW 2026 Q1 Patch 1.** Bug 3739525 — *"LabVIEW sometimes
@@ -596,17 +595,11 @@ emits no `stepSelected`** — see §3.1.
 | `loadLayout` | same | either (or the raw pass-through) |
 | `clearRuleFile` | — | either |
 | `selectStep` | `{"uid":"..."}` | either |
-| `setStepStatus` | `{"uid":"...","status":"pending\|running\|pass\|fail\|skipped"}` | either |
-| `setStepStatuses` | `{"statuses":[{"uid":"...","status":"..."}, ...]}` | either |
-| `resetExecution` | — | either |
 | `setView` | `{"view":"tree\|canvas\|both"}` | either |
 | `exportMermaid` | — | **`handleCommandSync`** — `result` is the `.mmd` text |
 | `exportSvg` | — | **`handleCommandSync`** — `result` is the SVG text |
 | `exportPng` | — (top-level `id`) | `handleCommand`; result arrives as an event |
 | `getState` | — | **`handleCommandSync`** — `result` is §1.2's object |
-
-`setStepStatuses` keeps the well-formed entries and silently drops malformed
-ones; a `statuses` that is not an array is rejected outright.
 
 ## 5. Where the build guide disagrees with the code
 

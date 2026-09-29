@@ -17,9 +17,6 @@ import {
   EventQueue,
   asFilePayload,
   asSelectStepPayload,
-  asStepStatusPayload,
-  asStepStatusesPayload,
-  isExecStatus,
   parseCommand,
   serialiseEvents,
   serialiseEventsFlat,
@@ -92,50 +89,6 @@ describe('selectStep payload', () => {
   });
 });
 
-describe('execution status', () => {
-  test('isExecStatus recognises exactly the five values', () => {
-    for (const status of ['pending', 'running', 'pass', 'fail', 'skipped']) {
-      expect(isExecStatus(status)).toBe(true);
-    }
-    expect(isExecStatus('done')).toBe(false);
-    expect(isExecStatus(1)).toBe(false);
-    expect(isExecStatus(null)).toBe(false);
-  });
-
-  test('setStepStatus payload', () => {
-    expect(asStepStatusPayload({ uid: 'STEP-1', status: 'running' })).toEqual({
-      uid: 'STEP-1',
-      status: 'running',
-    });
-    expect(() => asStepStatusPayload({ uid: 'STEP-1', status: 'jogging' })).toThrow(
-      /payload.status must be one of pending\/running\/pass\/fail\/skipped/,
-    );
-    expect(() => asStepStatusPayload({ status: 'pass' })).toThrow(/payload.uid must be a string/);
-  });
-
-  test('setStepStatuses keeps the well-formed entries and drops the rest', () => {
-    const parsed = asStepStatusesPayload({
-      statuses: [
-        { uid: 'A', status: 'pass' },
-        { uid: 'B', status: 'not-a-status' },
-        { status: 'fail' },
-        'not even an object',
-        { uid: 'C', status: 'fail' },
-      ],
-    });
-    expect(parsed.statuses).toEqual([
-      { uid: 'A', status: 'pass' },
-      { uid: 'C', status: 'fail' },
-    ]);
-  });
-
-  test('a non-array statuses field is rejected outright', () => {
-    expect(() => asStepStatusesPayload({ statuses: 'nope' })).toThrow(
-      /payload.statuses must be an array/,
-    );
-  });
-});
-
 describe('EventQueue', () => {
   test('drain returns everything queued, then empties', () => {
     const queue = new EventQueue();
@@ -153,7 +106,7 @@ describe('EventQueue', () => {
 
   test('an event needs no payload', () => {
     const queue = new EventQueue();
-    queue.push('resetExecution');
+    queue.push('bridgeReady');
     expect(queue.drain()[0]!.payload).toBeUndefined();
   });
 
@@ -214,7 +167,7 @@ describe('serialiseEventsFlat', () => {
 
   test('an undefined payload is "null" too — one cluster unflattens every event', () => {
     const queue = new EventQueue();
-    queue.push('resetExecution');
+    queue.push('bridgeReady');
     const parsed = JSON.parse(serialiseEventsFlat(queue.drain())) as Array<Record<string, unknown>>;
     expect(parsed[0]!['payload']).toBe('null');
   });
@@ -266,9 +219,6 @@ function installed(overrides: Partial<BridgeHandlers> = {}): {
     loadLayout: noop,
     clearRuleFile: noop,
     selectStep: noop,
-    setStepStatus: noop,
-    setStepStatuses: noop,
-    resetExecution: noop,
     setView: noop,
     exportMermaid: () => 'flowchart TD',
     exportSvg: () => '<svg/>',
@@ -325,7 +275,7 @@ describe('the installed API', () => {
 
   test('handleCommand returns an acceptance envelope and still queues the error', () => {
     const api = install();
-    expect(JSON.parse(api['handleCommand']!('{"id":"c3","type":"resetExecution"}'))).toEqual({
+    expect(JSON.parse(api['handleCommand']!('{"id":"c3","type":"clearRuleFile"}'))).toEqual({
       ok: true,
       id: 'c3',
     });

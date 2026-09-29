@@ -10,32 +10,17 @@
  * thin and this half stays Node-testable like the rest of `core/` and `emit/`.
  *
  * Defensive the way `emit/sidecar.ts` is defensive: a bad envelope names what
- * is wrong rather than throwing a generic parse error, and a batch with one
- * bad entry keeps the rest rather than failing the whole command — LabVIEW is
- * on the other end of this, not a person who can fix a typo and retry.
+ * is wrong rather than throwing a generic parse error — LabVIEW is on the
+ * other end of this, not a person who can fix a typo and retry.
  */
 
 import { flatEvent, toAsciiJson } from './labview';
 
-export type ExecStatus = 'pending' | 'running' | 'pass' | 'fail' | 'skipped';
-
-const EXEC_STATUSES: ReadonlySet<string> = new Set([
-  'pending',
-  'running',
-  'pass',
-  'fail',
-  'skipped',
-]);
-
-export function isExecStatus(value: unknown): value is ExecStatus {
-  return typeof value === 'string' && EXEC_STATUSES.has(value);
-}
-
 /**
  * Which of the two views the workspace is showing.
  *
- * The tree and the flowchart are one app sharing selection, collapse and
- * execution state, but they are two independently addressable *views* of it —
+ * The tree and the flowchart are one app sharing selection and collapse
+ * state, but they are two independently addressable *views* of it —
  * an embedded LabVIEW panel with room for only one should be able to say
  * which, without the operator reaching for a menu. Named on the wire rather
  * than numbered: a boolean would say which pane is hidden and would have to
@@ -59,9 +44,6 @@ export type CommandType =
   | 'loadLayout'
   | 'clearRuleFile'
   | 'selectStep'
-  | 'setStepStatus'
-  | 'setStepStatuses'
-  | 'resetExecution'
   | 'exportMermaid'
   | 'exportSvg'
   | 'exportPng'
@@ -74,9 +56,6 @@ const COMMAND_TYPES: ReadonlySet<string> = new Set<CommandType>([
   'loadLayout',
   'clearRuleFile',
   'selectStep',
-  'setStepStatus',
-  'setStepStatuses',
-  'resetExecution',
   'exportMermaid',
   'exportSvg',
   'exportPng',
@@ -187,53 +166,6 @@ export function asViewPayload(payload: unknown): ViewPayload {
     throw new BridgeError('payload.view must be one of "tree", "canvas", "both"');
   }
   return { view: v };
-}
-
-export interface StepStatusPayload {
-  uid: string;
-  status: ExecStatus;
-}
-
-export function asStepStatusPayload(payload: unknown): StepStatusPayload {
-  if (typeof payload !== 'object' || payload === null) {
-    throw new BridgeError('payload must be an object with "uid" and "status"');
-  }
-  const v = payload as Record<string, unknown>;
-  if (typeof v['uid'] !== 'string') throw new BridgeError('payload.uid must be a string');
-  if (!isExecStatus(v['status'])) {
-    throw new BridgeError(
-      `payload.status must be one of pending/running/pass/fail/skipped, got ${JSON.stringify(v['status'])}`,
-    );
-  }
-  return { uid: v['uid'], status: v['status'] };
-}
-
-export interface StepStatusesPayload {
-  statuses: StepStatusPayload[];
-}
-
-/**
- * A batch update for live execution highlighting. One malformed entry does
- * not lose the rest — the same choice `applySidecar` makes for a layout file,
- * for the same reason: a status feed running for the length of a test is not
- * worth interrupting over one bad row.
- */
-export function asStepStatusesPayload(payload: unknown): StepStatusesPayload {
-  if (typeof payload !== 'object' || payload === null) {
-    throw new BridgeError('payload must be an object with "statuses"');
-  }
-  const v = payload as Record<string, unknown>;
-  if (!Array.isArray(v['statuses'])) throw new BridgeError('payload.statuses must be an array');
-
-  const statuses: StepStatusPayload[] = [];
-  for (const entry of v['statuses']) {
-    if (typeof entry !== 'object' || entry === null) continue;
-    const e = entry as Record<string, unknown>;
-    if (typeof e['uid'] === 'string' && isExecStatus(e['status'])) {
-      statuses.push({ uid: e['uid'], status: e['status'] });
-    }
-  }
-  return { statuses };
 }
 
 /* ------------------------------------------------------------------ */
