@@ -49,11 +49,9 @@ export class LayoutTimeout extends Error {
 }
 
 /**
- * A `blob:` URL only has to live long enough for `new Worker` to read it — the
- * same margin `downloadText`/`downloadBlob` give a click before revoking
- * their own object URLs, and for the same reason: revoking immediately races
- * the read in some browsers, and a worker's script is fetched no faster than
- * a download's click is handled.
+ * A `blob:` URL only has to live long enough for `new Worker` to read it.
+ * Revoking it on the next tick rather than immediately, because revoking at
+ * once races the read in some browsers.
  */
 function createElkWorker(): Worker {
   const blob = new Blob([elkWorkerSource], { type: 'text/javascript' });

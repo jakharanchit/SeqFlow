@@ -59,29 +59,3 @@ export function numberedName(node: SeqNode): string {
     ? displayName(node)
     : `${node.stepNumber} - ${displayName(node)}`;
 }
-
-/**
- * Every node in document order: containers depth-first with their children
- * beneath them. This is the outline's row order, and `graph.nodes` insertion
- * order already matches it — but the outline needs the tree, so walk it.
- */
-export function outlineOrder(graph: Graph): SeqNode[] {
-  const out: SeqNode[] = [];
-  const seen = new Set<string>();
-
-  const visit = (uid: string): void => {
-    if (seen.has(uid)) return;
-    seen.add(uid);
-    const node = graph.nodes.get(uid);
-    if (node === undefined) return;
-    out.push(node);
-    for (const child of graph.containers.get(uid) ?? []) visit(child);
-  };
-
-  for (const node of graph.nodes.values()) {
-    if (node.parent === null) visit(node.uid);
-  }
-  // Anything orphaned by a malformed file still appears rather than vanishing.
-  for (const node of graph.nodes.values()) if (!seen.has(node.uid)) out.push(node);
-  return out;
-}

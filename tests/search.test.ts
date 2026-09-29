@@ -7,7 +7,6 @@ import {
   isActive,
   isStepNumberQuery,
   matchSet,
-  nameCounts,
   search,
 } from '../src/core/search';
 import { domParser, fixtureXml, rules } from './helpers';
@@ -71,15 +70,6 @@ describe('search by step number', () => {
 });
 
 describe('search', () => {
-  it('confirms the ambiguity this feature exists for', () => {
-    const names = nameCounts(graph);
-    const covered = [...names.values()].filter((v) => v.length > 1);
-    expect(covered.length).toBe(27);
-    expect(covered.reduce((a, v) => a + v.length, 0)).toBe(106);
-    expect(names.get('Turn off Load')).toHaveLength(5);
-    expect(names.get('Excite to Desired Reading')).toHaveLength(4);
-  });
-
   it('returns 4 results with 4 distinct parent paths', () => {
     const hits = search(graph, { text: 'Excite to Desired Reading' });
     expect(hits).toHaveLength(4);

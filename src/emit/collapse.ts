@@ -206,8 +206,3 @@ export function asGraph(graph: Graph, view: CollapsedView): Graph {
     warnings: graph.warnings,
   };
 }
-
-/** Every container in the graph — the toggleable set. */
-export function collapsibleUids(graph: Graph): string[] {
-  return [...graph.containers.keys()];
-}

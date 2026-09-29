@@ -9,15 +9,11 @@
  *
  * Sizing is the trap this task named. Grouped is 975 x 8886, so a 2x export is
  * 1950 x 17772 — 34.6 Mpx, inside every browser's limits but a PNG no document
- * wants. The caller shows the pixel dimensions before the click; this function
- * refuses anything past `MAX_PIXELS` rather than handing back a blank canvas,
- * which is what a browser does when it runs out of room.
+ * wants. This function refuses anything past `MAX_PIXELS` rather than handing
+ * back a blank canvas, which is what a browser does when it runs out of room.
  *
- * Rendering and saving are two clicks, deliberately. Rasterising the grouped
- * layout takes over a second, and an `<a download>` click that late has
- * outlived its user activation — the browser drops it in silence, which is the
- * worst outcome available. `downloadBlob` runs inside the second click, with
- * the blob already in hand, so it is synchronous and always lands.
+ * The only caller is the bridge's `exportPng`, which hands the blob back to
+ * LabVIEW as base64; nothing in the page downloads it.
  */
 
 /**
@@ -74,22 +70,4 @@ export async function svgToPng(
   });
   if (blob === null) throw new RasterError('the browser could not encode the PNG');
   return { blob, width: w, height: h };
-}
-
-/**
- * Offer a blob to the user as a file. Mirrors `downloadText`, and mirrors it
- * closely on purpose: a freshly created anchor, clicked and removed in the
- * same tick, is the one route every browser honours. A long-lived `<a href>`
- * rendered into the page looks tidier and is quietly ignored in some
- * embedded views.
- */
-export function downloadBlob(name: string, blob: Blob): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
 }

@@ -6,9 +6,9 @@ read.
 Test-automation tools export their sequences as XML — steps, branches, jump
 targets, pass/fail criteria — but the XML itself is not something anyone
 reviews line by line. SeqFlow parses that file into a graph and renders it as
-a flowchart: collapsible sequences, path tracing, a searchable signal index, a
-linter, a criteria table, duration estimates, and a diff between two
-revisions. It never writes back to the source file.
+a flowchart and a step tree side by side: collapsible sequences, search by
+name or step number, and live execution status pushed in from LabVIEW. It
+never writes back to the source file.
 
 Built for reviewing automated test procedures in a regulated setting, where
 "what does this sequence actually do" needs a real answer, not a read-through
@@ -17,22 +17,17 @@ of a few thousand lines of GUIDs.
 ## What it does
 
 - **Canvas** — drag the XML onto the page and get a laid-out flowchart.
-  Collapse or expand any sequence, semantic zoom drops step labels at low
-  scale, click a node to inspect every attribute.
-- **Search & signal index** — find a step by name or step number, or find
-  every step that reads or writes a given signal tag.
-- **Path tracing** — select a step, see everything upstream and downstream of
-  it, in two colors.
-- **Linter** — flags stale jump targets, duplicate names, odd siblings, and
-  elements the rule file doesn't recognize.
-- **Criteria & fail routes** — every acceptance-criteria step, how many places
-  it's used, and the routes a failure actually takes to the abort sequence.
-- **Duration estimate** — nominal vs. worst-case time along a path, waits and
-  timeouts kept separate.
-- **Revision diff** — drop a second version of the same sequence and see
-  what was added, removed, or changed, by uid.
-- **Export** — Mermaid text, SVG, and PNG, plus a layout sidecar so manual
-  node positions survive a reload.
+  Collapse or expand any sequence; semantic zoom drops step labels at low
+  scale.
+- **Step tree** — the same sequence as a tree with Description and Log
+  columns, sharing selection and collapse with the canvas.
+- **Search** — find a step by name or step number (`2.3.6.8`), or narrow the
+  tree by step type.
+- **LabVIEW bridge** — `window.SeqFlowBridge` lets a LabVIEW panel load
+  files, select steps, colour steps by execution status, switch views, and
+  export Mermaid, SVG or PNG. See [docs/LABVIEW-EVENTS.md](docs/LABVIEW-EVENTS.md).
+- **Layout files** — a layout sidecar saved by an earlier build still loads,
+  restoring node positions and the collapsed set.
 - **CLI** — `--check` for CI staleness gates, `--profile` for what a rule
   file doesn't know yet, `--audit` for parsing an entire corpus and reporting
   on it.
@@ -87,7 +82,7 @@ Every element name, container, jump attribute, and shape lives in
 `rules.yaml`, never in source. Point the app or the CLI at a schema it hasn't
 seen and it will still render — unknown elements draw as plain rectangles and
 get collected into a warnings list, never silently dropped — but `--profile`
-(or the Schema tab in the app) will say exactly what to add: which elements
+will say exactly what to add: which elements
 hold steps, which attributes look like jump targets, and a ready-to-paste
 YAML fragment.
 
@@ -95,14 +90,13 @@ YAML fragment.
 
 Two dialects are supported today — a battery-test sequence and a
 gas-analyzer integration test, both anonymized from real customer files
-before being checked in. The parser, canvas, search, linter, criteria table,
-and duration estimator are all tested against both.
+before being checked in. The parser, canvas, search and exporters are all
+tested against both.
 
-The revision diff is built and tested — its engine compares any two graphs
-by uid and reports added, removed, and changed steps — but it has only ever
-run against synthetic mutations of one file, not two real revisions of the
-same sequence. The app's Diff tab says so rather than presenting the feature
-as validated.
+Earlier versions also had a linter, a criteria table, duration estimates, a
+signal index, path tracing and a revision diff. They were removed on
+2026-09-29 once nothing on screen or on the bridge used them; they are in
+the git history before that date.
 
 ## License
 

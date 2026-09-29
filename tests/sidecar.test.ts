@@ -16,9 +16,7 @@ import {
   SidecarError,
   applySidecar,
   parseSidecar,
-  serialiseSidecar,
-  sidecarName,
-  toSidecar,
+  type Sidecar,
 } from '../src/emit/sidecar';
 import { applyLayout, fromElk, toElk, type ElkLike } from '../src/layout/elkGraph';
 import { domParser, fixtureXml, rules } from './helpers';
@@ -32,44 +30,21 @@ const collapsed = new Set(
   [...graph.containers.keys()].filter((uid) => (graph.nodes.get(uid)?.depth ?? 0) > 3),
 );
 
-describe('writing', () => {
-  const sidecar = toSidecar('Sequence_XML.xml', collapsed, placed);
-  const text = serialiseSidecar(sidecar);
-
-  test('every visible node gets a position', () => {
-    expect(Object.keys(sidecar.positions).length).toBe(133);
-    expect(sidecar.collapsed.length).toBe(collapsed.size);
-    expect(sidecar.seqflow).toBe(SIDECAR_VERSION);
-  });
-
-  test('133 positions are about 8 KB, so nothing is worth omitting', () => {
-    expect(text.length).toBeGreaterThan(5_000);
-    expect(text.length).toBeLessThan(14_000);
-  });
-
-  test('keys are sorted, so two saves of one arrangement are the same bytes', () => {
-    const again = serialiseSidecar(toSidecar('Sequence_XML.xml', collapsed, placed));
-    expect(again).toBe(text);
-    const uids = Object.keys(sidecar.positions);
-    expect(uids).toEqual([...uids].sort());
-    expect(sidecar.collapsed).toEqual([...sidecar.collapsed].sort());
-  });
-
-  test('it is named beside the sequence', () => {
-    expect(sidecarName('Sequence_XML')).toBe('Sequence_XML.layout.json');
-  });
-
-  test('it records positions and nothing from the sequence itself', () => {
-    // Invariant 4: this is the only file the tool writes, and it is not XML.
-    expect(text).not.toContain('<');
-    expect(text).not.toContain('WaitStep');
-  });
-});
+/** A layout file as an earlier build saved it: every position, collapsed set sorted. */
+function saved(): Sidecar {
+  return {
+    seqflow: SIDECAR_VERSION,
+    file: 'Sequence_XML.xml',
+    collapsed: [...collapsed].sort(),
+    positions: Object.fromEntries(
+      placed.map((n) => [n.id, [n.position.x, n.position.y] as [number, number]]),
+    ),
+  };
+}
 
 describe('round trip', () => {
-  test('save, parse, apply — every position comes back', () => {
-    const text = serialiseSidecar(toSidecar('Sequence_XML.xml', collapsed, placed));
-    const back = parseSidecar(text);
+  test('parse, apply — every position comes back', () => {
+    const back = parseSidecar(JSON.stringify(saved(), null, 2));
     expect(new Set(back.collapsed)).toEqual(collapsed);
 
     const applied = applySidecar(
@@ -89,7 +64,7 @@ describe('round trip', () => {
 
 describe('disagreement', () => {
   test('a uid the sequence no longer has is dropped and reported', () => {
-    const sidecar = toSidecar('Sequence_XML.xml', collapsed, placed);
+    const sidecar = saved();
     sidecar.positions['NOT-IN-THIS-FILE'] = [10, 20];
     sidecar.positions['ALSO-GONE'] = [30, 40];
 
@@ -100,7 +75,7 @@ describe('disagreement', () => {
   });
 
   test('a step with no saved position keeps the automatic one', () => {
-    const sidecar = toSidecar('Sequence_XML.xml', collapsed, placed);
+    const sidecar = saved();
     const orphan = placed[5]!;
     delete sidecar.positions[orphan.id];
 

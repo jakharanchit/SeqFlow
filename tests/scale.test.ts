@@ -4,7 +4,7 @@
  * 133 nodes is the small case. The corpus is a database of sequences and the
  * cliff is somewhere above the fixture, so this runs the whole pipeline over
  * generated graphs at 500 / 2 000 / 5 000 leaves and reports each stage
- * separately: parse, every whole-file analysis, the flow adapter, and ELK.
+ * separately: parse, the schema profile, the flow adapter, and ELK.
  *
  * Two jobs, and the split between them matters:
  *
@@ -26,14 +26,8 @@
 import { describe, expect, test } from 'vitest';
 import ELK from 'elkjs/lib/elk.bundled.js';
 
-import { criteriaTable, failEdges } from '../src/core/criteria';
-import { durations, offsets } from '../src/core/duration';
-import { lint } from '../src/core/lint';
 import { parse } from '../src/core/parse';
-import { adjacency, pathSet, terminals, unreachable } from '../src/core/paths';
 import { profile } from '../src/core/profile';
-import { signalIndex } from '../src/core/signals';
-import { similarGroups } from '../src/core/similarity';
 import { toFlow } from '../src/emit/flow';
 import { toElk, type ElkLike } from '../src/layout/elkGraph';
 import { generateSequence } from './generate';
@@ -63,23 +57,9 @@ async function measure(leaves: number): Promise<Row> {
   const [graph, parseMs] = time(() => parse(xml, { rules, domParser }));
   stages['parse'] = parseMs;
 
-  // The analyses the app runs on load, each on its own so the table names the
-  // expensive one rather than a total nobody can act on.
-  const [adj, adjMs] = time(() => adjacency(graph));
-  stages['adjacency'] = adjMs;
-  stages['signals'] = time(() => signalIndex(graph, rules))[1];
-  stages['similarity'] = time(() => similarGroups(graph))[1];
-  stages['lint'] = time(() => lint(graph, rules))[1];
-  stages['criteria'] = time(() => criteriaTable(graph, rules))[1];
-  stages['failEdges'] = time(() => failEdges(graph))[1];
-  stages['duration'] = time(() => durations(graph, rules, adj))[1];
-  stages['offsets'] = time(() => offsets(graph, rules, adj))[1];
   stages['profile'] = time(() =>
     profile(domParser.parseFromString(xml, 'application/xml'), rules),
   )[1];
-
-  // One selection: what a click costs before any rendering happens.
-  stages['pathSet'] = time(() => pathSet(graph, graph.entry, adj))[1];
 
   const [flow, flowMs] = time(() => toFlow(graph, rules));
   stages['toFlow'] = flowMs;
@@ -87,9 +67,6 @@ async function measure(leaves: number): Promise<Row> {
   const grouped = performance.now();
   await elk.layout(toElk(flow.nodes, flow.edges));
   stages['elk grouped'] = performance.now() - grouped;
-
-  expect(unreachable(graph, adj).size).toBe(0);
-  expect(terminals(graph, adj).size).toBeGreaterThan(0);
 
   return { leaves, nodes: graph.nodes.size, edges: graph.edges.length, stages };
 }

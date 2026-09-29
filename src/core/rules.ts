@@ -11,7 +11,6 @@
 
 import { parse as parseYaml } from 'yaml';
 import type {
-  Durations,
   EdgeRule,
   EdgeStyle,
   LoopRule,
@@ -119,42 +118,11 @@ function enumMap<T extends string>(
 }
 
 /**
- * `durations: { waits: [...], timeouts: [...] }`. Both lists optional; absent
- * means the duration estimate has nothing to measure and says so, rather than
- * reporting zero. Spec 7.6.
- */
-function durations(root: Raw): Durations {
-  const v = root['durations'];
-  if (v === undefined || v === null) return { waits: [], timeouts: [] };
-  if (!isRecord(v)) {
-    throw new RuleFileError('durations', `expected a mapping, got ${typeof v}`);
-  }
-  const list = (key: 'waits' | 'timeouts'): string[] => {
-    if (v[key] === undefined || v[key] === null) return [];
-    return strArray(v, key).map((attr) => {
-      if (attr === '') throw new RuleFileError(`durations.${key}`, 'attribute name is empty');
-      return attr;
-    });
-  };
-  const out = { waits: list('waits'), timeouts: list('timeouts') };
-  for (const attr of out.waits) {
-    if (out.timeouts.includes(attr)) {
-      throw new RuleFileError(
-        'durations',
-        `"${attr}" is listed as both a wait and a timeout; they are reported ` +
-          'separately and one attribute cannot be both',
-      );
-    }
-  }
-  return out;
-}
-
-/**
- * `loops: { Element: { count: attr, period: attr } }`.
+ * `loops: { Element: { count: attr } }`.
  *
  * Optional; absent means no element repeats and no back edge is ever drawn.
- * Both inner keys are optional too — a loop with no count attribute still
- * gets its back edge, just without a `×N` label.
+ * `count` is optional too — a loop with no count attribute still gets its
+ * back edge, just without a `×N` label.
  */
 function loopRules(root: Raw): Record<string, LoopRule> {
   const v = root['loops'];
@@ -167,22 +135,17 @@ function loopRules(root: Raw): Record<string, LoopRule> {
   for (const [element, raw] of Object.entries(v)) {
     const at = `loops.${element}`;
     if (!isRecord(raw)) {
-      throw new RuleFileError(at, 'expected a mapping of count/period to attribute names');
+      throw new RuleFileError(at, 'expected a mapping with a count attribute name');
     }
-    const attr = (key: 'count' | 'period'): string | undefined => {
-      const value = raw[key];
-      if (value === undefined || value === null) return undefined;
-      if (typeof value !== 'string' || value === '') {
-        throw new RuleFileError(`${at}.${key}`, 'expected a non-empty attribute name');
-      }
-      return value;
-    };
-    const count = attr('count');
-    const period = attr('period');
-    out[element] = {
-      ...(count === undefined ? {} : { count }),
-      ...(period === undefined ? {} : { period }),
-    };
+    const count = raw['count'];
+    if (count === undefined || count === null) {
+      out[element] = {};
+      continue;
+    }
+    if (typeof count !== 'string' || count === '') {
+      throw new RuleFileError(`${at}.count`, 'expected a non-empty attribute name');
+    }
+    out[element] = { count };
   }
   return out;
 }
@@ -305,9 +268,7 @@ export function loadRules(yamlText: string): Rules {
     kinds: enumMap(doc, 'kinds', KINDS),
     edges: edgeRules(doc),
     labels: strListMap(doc, 'labels'),
-    signalAttrs: doc['signal_attrs'] === undefined ? [] : strArray(doc, 'signal_attrs'),
     externalRefs: doc['external_refs'] === undefined ? [] : strArray(doc, 'external_refs'),
-    durations: durations(doc),
     loops: loopRules(doc),
     convergenceThreshold: threshold,
     showParamsOnCanvas,

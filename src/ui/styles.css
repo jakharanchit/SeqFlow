@@ -64,68 +64,6 @@ body {
   height: 100%;
 }
 
-.spacer {
-  flex: 1;
-}
-
-button.tool {
-  background: var(--bg-raised);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 5px 11px;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-button.tool:hover:not(:disabled) {
-  border-color: var(--line-strong);
-  background: #e6e6e6;
-}
-
-button.tool:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.segmented {
-  display: inline-flex;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.segmented button {
-  background: var(--bg-raised);
-  color: var(--text-dim);
-  border: 0;
-  padding: 5px 11px;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.segmented button + button {
-  border-left: 1px solid var(--line);
-}
-
-.segmented button[aria-pressed='true'] {
-  background: var(--accent-soft);
-  color: var(--text);
-}
-
-.stat {
-  color: var(--text-faint);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.stat b {
-  color: var(--text-dim);
-  font-weight: 600;
-}
-
 /* ---------------------------------------------------------------- body */
 
 .workspace {
@@ -236,11 +174,6 @@ button.tool:disabled {
 .banner.error {
   background: rgba(179, 38, 30, 0.09);
   color: var(--error);
-}
-
-.banner.warn {
-  background: rgba(154, 106, 0, 0.1);
-  color: var(--warn);
 }
 
 .banner .body {
@@ -415,15 +348,6 @@ button.tool:disabled {
   box-shadow: 0 0 0 1px rgba(165, 42, 31, 0.55), 0 0 14px rgba(165, 42, 31, 0.2);
 }
 
-.rf-node .fanin {
-  position: absolute;
-  top: 2px;
-  right: 4px;
-  font-family: var(--mono);
-  font-size: 8.5px;
-  color: var(--criteria);
-}
-
 .rf-group {
   width: 100%;
   height: 100%;
@@ -464,86 +388,10 @@ button.tool:disabled {
   border: 0;
 }
 
-.section {
-  margin-top: 16px;
-}
-
-.section > h3 {
-  font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--text-faint);
-  margin: 0 0 7px;
-  font-weight: 620;
-}
-
-table.attrs {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: var(--mono);
-  font-size: 11px;
-}
-
-table.attrs td {
-  padding: 3px 0;
-  vertical-align: top;
-  border-bottom: 1px solid var(--line-soft);
-}
-
-table.attrs td.k {
-  color: var(--text-dim);
-  padding-right: 10px;
-  white-space: nowrap;
-  width: 1%;
-}
-
-table.attrs td.v {
-  color: var(--text);
-  word-break: break-all;
-}
-
-table.attrs td.v.empty {
-  color: var(--text-faint);
-  font-style: italic;
-}
-
-pre.xml {
-  background: var(--bg-input);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 9px;
-  font-family: var(--mono);
-  font-size: 10.5px;
-  line-height: 1.5;
-  color: var(--text-dim);
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 280px;
-  overflow: auto;
-  margin: 0;
-}
-
 .hint {
   color: var(--text-faint);
   font-size: 12px;
   line-height: 1.6;
-}
-
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  font-size: 10.5px;
-  color: var(--text-faint);
-}
-
-.legend i {
-  display: inline-block;
-  width: 15px;
-  height: 0;
-  border-top-width: 2px;
-  margin-right: 5px;
-  vertical-align: middle;
 }
 
 /* React Flow chrome */
@@ -1104,47 +952,6 @@ pre.xml {
   opacity: 0.09;
 }
 
-button.tool.on {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.detail-path {
-  flex: 1;
-  min-width: 0;
-  font-size: 10px;
-  color: var(--text-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.warn-row {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 4px 12px;
-  font-size: 11.5px;
-  cursor: pointer;
-  color: var(--text-dim);
-}
-
-.warn-row:hover {
-  background: var(--hover-bg);
-}
-
-.warn-code {
-  font-family: var(--mono);
-  font-size: 9.5px;
-  color: var(--warn);
-  white-space: nowrap;
-}
-
-.warn-message {
-  flex: 1;
-  min-width: 0;
-}
-
 /* ------------------------------------------------------- semantic zoom */
 
 /*
@@ -1290,156 +1097,6 @@ button.tool.on {
   background-clip: content-box;
 }
 
-/* --------------------------------------------------------------- export */
-/* The Mermaid preview. A wide monospace pane, because the point of looking
-   at it is spotting a mangled label before it reaches a repository. */
-
-.export {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-}
-
-.export-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--line-soft);
-  flex-wrap: wrap;
-}
-
-.export-controls .spacer {
-  flex: 1;
-}
-
-.export-depth {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-dim);
-  font-size: 12px;
-}
-
-.export-depth input {
-  width: 110px;
-  accent-color: var(--accent);
-}
-
-.export-depth b {
-  color: var(--text);
-  min-width: 10px;
-}
-
-.export-files {
-  display: flex;
-  gap: 4px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--line-soft);
-  overflow-x: auto;
-}
-
-.export-files button {
-  background: transparent;
-  color: var(--text-dim);
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  padding: 3px 9px;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.export-files button:hover {
-  color: var(--text);
-}
-
-.export-files button.on {
-  background: var(--accent-soft);
-  border-color: var(--line);
-  color: var(--text);
-}
-
-.export-preview {
-  flex: 1;
-  /* Never let a wrapped control row squeeze the preview to nothing: a preview
-     you cannot read is the same as no preview, and reading it is the point. */
-  min-height: 140px;
-  width: 100%;
-  resize: none;
-  border: 0;
-  outline: 0;
-  padding: 10px 12px;
-  background: var(--bg-input);
-  color: var(--text-dim);
-  font: 12px/1.55 var(--mono);
-  white-space: pre;
-  overflow: auto;
-  tab-size: 2;
-}
-
-.export-rule {
-  width: 1px;
-  align-self: stretch;
-  background: var(--line);
-  margin: 0 2px;
-}
-
-.export-note {
-  margin: 0;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--line-soft);
-  color: var(--text-faint);
-  font-size: 11.5px;
-}
-
-.export-error {
-  color: var(--error);
-}
-
-/* The image preview scrolls in both directions: grouped is 8886 px tall and
-   no drawer is going to hold that, so scroll rather than scale it down to an
-   illegible strip. */
-.export-image {
-  flex: 1;
-  min-height: 140px;
-  overflow: auto;
-  background: var(--bg-input);
-  padding: 10px;
-}
-
-.export-image svg {
-  display: block;
-}
-
-.export-layout {
-  flex: 1;
-  min-height: 140px;
-  overflow: auto;
-  padding: 12px 16px;
-  max-width: 720px;
-  color: var(--text-dim);
-  font-size: 12.5px;
-}
-
-.export-layout p {
-  margin: 0 0 10px;
-}
-
-.export-layout b {
-  color: var(--text);
-}
-
-/* Saving is a second click because the render outlives the first one's user
-   activation. This one is synchronous, so the download always lands. */
-button.tool.save-png {
-  border-color: var(--accent);
-  color: var(--text);
-}
-
 :root {
   --added: #1a7f4b;
   --removed: #b3261e;
@@ -1535,17 +1192,6 @@ button.tool.save-png {
   margin-right: 7px;
 }
 
-.row-name + .row-count,
 .step-num + .row-name {
   min-width: 0;
-}
-
-/*
- * A file that opens folded has to say so. Without this the reader sees a
- * diagram with a tenth of the steps and no reason to think anything is hidden;
- * the count and the tooltip say what happened and where to undo it.
- */
-.stat .auto-folded {
-  color: var(--warn);
-  cursor: help;
 }

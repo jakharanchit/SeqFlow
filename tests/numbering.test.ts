@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { numberedName } from '../src/core/ancestry';
-import { byStepNumber, stepNumbers } from '../src/core/numbering';
+import { stepNumbers } from '../src/core/numbering';
 import { parse } from '../src/core/parse';
 import { visibleGraph } from '../src/emit/collapse';
 import type { Graph, SeqNode } from '../src/core/types';
@@ -50,13 +50,6 @@ describe('the fixture', () => {
     expect(numbers.size).toBe(133);
     expect([...numbers.values()].filter((n) => n !== '')).toHaveLength(132);
     expect(numbers.get(graph.root)).toBe('');
-  });
-
-  it('reads back by number', () => {
-    const index = byStepNumber(graph);
-    expect(index.size).toBe(132);
-    expect(graph.nodes.get(index.get('2.1.6.7')!)?.name).toBe('4R Cycle (10s)');
-    expect(graph.nodes.get(index.get('3.3')!)?.element).toBe('StopLogging');
   });
 
   it('survives collapse, because collapse reuses the node objects', () => {

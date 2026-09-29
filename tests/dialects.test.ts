@@ -34,8 +34,6 @@ edges:
     label:  "no"
     style:  solid
     reason: branch
-durations:
-  waits: [secs]
 loops:
   Repeat: {count: times}
 `);

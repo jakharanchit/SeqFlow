@@ -38,7 +38,7 @@ import type { Graph, SeqNode } from '../core/types';
 export type HideableColumn = 'desc' | 'logStart' | 'logCompletion';
 
 export interface OutlineProps {
-  graph: Graph | null;
+  graph: Graph;
   selected: string | null;
   collapsed: ReadonlySet<string>;
   onSelect: (uid: string) => void;
@@ -311,10 +311,7 @@ export function Outline({
     '--outline-cols': outlineCols,
   } as React.CSSProperties;
 
-  const rows = useMemo(
-    () => (graph === null ? [] : rowsFor(graph, collapsed)),
-    [graph, collapsed],
-  );
+  const rows = useMemo(() => rowsFor(graph, collapsed), [graph, collapsed]);
   // The Step Types groups are a dozen rows of vertical space that most
   // sessions never touch, so each one stays folded until asked for.
   const [openCategories, setOpenCategories] = useState<ReadonlySet<string>>(new Set());
@@ -382,14 +379,6 @@ export function Outline({
       el.scrollTop = top + ROW_HEIGHT - el.clientHeight;
     }
   }, [selected, rows]);
-
-  if (graph === null) {
-    return (
-      <aside className="outline" style={rowStyle}>
-        <p className="hint">No file loaded.</p>
-      </aside>
-    );
-  }
 
   const needle = text.trim();
 

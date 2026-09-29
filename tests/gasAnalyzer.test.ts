@@ -18,10 +18,8 @@
 
 import { describe, expect, test } from 'vitest';
 
-import { durations } from '../src/core/duration';
 import { parse } from '../src/core/parse';
 import { profile, suggestRules, unknowns } from '../src/core/profile';
-import { unreachable } from '../src/core/paths';
 import { loadRules } from '../src/core/rules';
 import type { Graph } from '../src/core/types';
 import { EDGE_COLOR, toFlow } from '../src/emit/flow';
@@ -78,10 +76,6 @@ describe('the wrapped document element', () => {
   test('0 warnings — the rule file covers this dialect', () => {
     expect(graph.warnings).toEqual([]);
   });
-
-  test('nothing is unreachable', () => {
-    expect(unreachable(graph).size).toBe(0);
-  });
 });
 
 describe('the repeating container', () => {
@@ -110,25 +104,6 @@ describe('the repeating container', () => {
       (e) => e.src === graph.edges.find((x) => x.reason === 'loop')!.src,
     );
     expect(last.map((e) => e.reason).sort()).toEqual(['fallthrough', 'loop']);
-  });
-
-  test('the back edge does not make the timing report cyclic', () => {
-    // The sharpest consequence. Left in the path arithmetic the whole loop body
-    // sits on a cycle, reverseTopo leaves it unvisited, and the estimate is
-    // silently truncated at the loop's entrance.
-    const report = durations(graph, rules);
-    expect(report.cyclic).toBe(false);
-    expect(report.paths).toBeGreaterThan(0);
-    // 20 + 15 + 30 + 10 of waits inside the loop, one iteration counted.
-    expect(report.nominal.max).toBe(75);
-  });
-
-  test('repetition is reported rather than folded into the figure', () => {
-    const report = durations(graph, rules);
-    expect(report.loops).toHaveLength(1);
-    expect(report.loops[0]).toMatchObject({ name: 'Loop', count: 3, period: 180 });
-    // Not multiplied: 75 s, not 225 s. The count is shown beside it instead.
-    expect(report.nominal.max).toBe(75);
   });
 });
 

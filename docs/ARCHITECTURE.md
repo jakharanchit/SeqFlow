@@ -4,10 +4,11 @@
 
 ```
 src/
-  core/     pure TypeScript — parsing, analysis, no DOM beyond an injected parser, no React
-  emit/     Graph -> Mermaid / SVG / React Flow nodes+edges / layout sidecar, all pure
+  core/     pure TypeScript — parsing, search, schema profiling; no DOM beyond an injected parser, no React
+  emit/     Graph -> Mermaid / SVG / React Flow nodes+edges; layout sidecar reader, all pure
   layout/   ELK layout, run in a web worker
-  ui/       React components: canvas, outline, inspector, drawer tabs, export panel
+  ui/       React components: canvas, step tree, split bar
+  bridge/   window.SeqFlowBridge, the LabVIEW command/event surface
 bin/        CLI entry point
 rules.yaml  the schema — never hard-coded in source
 ```
@@ -49,9 +50,9 @@ right edges depends on five specific rules, not general tree-walking:
   code change.
 - **Node IDs are always the uid, verbatim** — never derived from a name, an
   index, or a position.
-- **The tool never writes sequence XML.** The only files it writes are the
-  ones a person explicitly asks for (Mermaid, SVG, PNG) and a layout sidecar
-  holding node positions and nothing from the sequence itself.
+- **The tool never writes sequence XML.** The only output is what a caller
+  explicitly asks for (Mermaid, SVG, PNG — handed back over the bridge or
+  written by the CLI). It reads layout sidecars but no longer writes them.
 - **No network at runtime.** Everything, including the ELK layout engine, is
   inlined into the built HTML. It runs from a local file with no server.
 - **Mermaid output is deterministic.** The same graph produces byte-identical
@@ -67,42 +68,24 @@ right edges depends on five specific rules, not general tree-walking:
 
 ## Extending it
 
-Two things can be dropped onto the running app, or pointed at from the CLI,
-with no rebuild:
-
-- **A new `rules.yaml`.** `--profile` (or the Schema tab in the app) walks
-  the raw document and reports which elements hold steps, which attributes
-  look like jump targets, and prints a starter YAML fragment for anything the
-  current rule file doesn't cover.
-- **A signal-name dictionary** (two columns: tag, human name) that swaps a
-  raw signal tag like `drive_source_reading_setpoint` for a readable label in
-  the UI. It changes only what's on screen — never the graph, the layout, or
-  any export.
+**A new `rules.yaml`** can be dropped onto the running app, sent over the
+bridge (`loadRuleFile`), or passed to the CLI (`--rules`), with no rebuild.
+`--profile` walks the raw document and reports which elements hold steps,
+which attributes look like jump targets, and prints a starter YAML fragment
+for anything the current rule file doesn't cover.
 
 ## Performance
 
-Everything in the pipeline — parsing, the whole-file analyses, converting to
-a flow graph — runs in well under 300ms even at several thousand steps. The
+Everything in the pipeline — parsing, search, converting to a flow graph —
+runs in well under 300ms even at several thousand steps. The
 layout pass (ELK) is the exception, dominating total runtime by roughly sixty
 to one over everything else combined. That's why:
 
 - **Large files auto-collapse on open**, folding the deepest containers first
   until the visible graph is under a fixed node budget — the only real lever
   on ELK's runtime is handing it fewer nodes.
-- **Layout results are cached** per view (layout mode × collapsed set), so
-  re-expanding something already computed is instant.
+- **Layout results are cached** per collapsed set, so re-expanding something
+  already computed is instant.
 - **A layout pass has a hard timeout.** If it doesn't finish, the app keeps
   the last arrangement it had and says so, rather than leaving the UI hung on
   a view it can't produce.
-
-## What's not proven yet
-
-The revision-diff engine — comparing two graphs by uid and reporting added,
-removed, and changed steps, with ghost nodes for anything removed — is built
-and has full test coverage. But every one of those tests mutates a single
-fixture and diffs it against itself; none of them is two independently
-authored revisions of the same sequence. The matcher that pairs nodes between
-two graphs is written to be swapped out specifically because it isn't yet
-known whether the tools that produce these files reissue a step's uid on an
-edit — real revisions are the only way to find out. The app's Diff tab says
-this rather than presenting the feature as validated.

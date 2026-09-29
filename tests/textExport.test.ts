@@ -5,13 +5,12 @@
  * XML in `fixtures/Sequence_XML.xml`. It is not a second sequence — it is a
  * second *view* of the one we have, written by the program that wrote the file.
  * That makes it the first correctness target here that nobody in this repo
- * hand-computed, and it checks four things `golden.test.ts` cannot:
+ * hand-computed, and it checks three things `golden.test.ts` cannot:
  *
  *   1. the tree shape and document order, against an independent renderer;
  *   2. that a `Comparison` is lifted onto the right step, with the right value;
  *   3. that a jump resolves *through* a container to its first leaf (rule 4.3),
- *      because the export names the container and we point at the leaf;
- *   4. that the duration model's two totals are the ones the tool reports.
+ *      because the export names the container and we point at the leaf.
  *
  * It does not settle spec Q1 — `Variables`, `Timers`, `StatisticsCalculators`
  * and `SubSequences` are empty in this file and the export cannot show what an
@@ -19,14 +18,12 @@
  *
  * The export is trusted for structure, names and numbers, and *not* for values:
  * `interval_s="0.5"` prints as `at every "00:00:00"`, so it is lossy where we
- * are not. Nothing below reads a rendered duration except the two totals, which
- * are whole seconds.
+ * are not. Nothing below reads a rendered duration.
  */
 
 import { describe, expect, it } from 'vitest';
 
 import { numberedName } from '../src/core/ancestry';
-import { durations } from '../src/core/duration';
 import { parse } from '../src/core/parse';
 import type { Graph, SeqNode } from '../src/core/types';
 import { domParser, fixtureXml, read, rules } from './helpers';
@@ -220,39 +217,5 @@ describe('jump targets, as the export quotes them', () => {
 
   it('the export quotes no target the file does not contain', () => {
     for (const ref of references) expect(byNumber.has(ref.to)).toBe(true);
-  });
-});
-
-describe('durations, against the numbers the tool prints', () => {
-  function seconds(clock: string): number {
-    const [h = '0', m = '0', s = '0'] = clock.split(':');
-    return Number(h) * 3600 + Number(m) * 60 + Number(s);
-  }
-
-  const report = durations(graph, rules);
-
-  it('the waits the export prints total what we count', () => {
-    const waits = numbered.flatMap((r) => [...r.description.matchAll(/Wait (\d+:\d+:\d+\.\d+)/g)]);
-    expect(waits).toHaveLength(16);
-    const total = waits.reduce((sum, m) => sum + seconds(m[1]!), 0);
-    expect(total).toBe(120);
-    expect(report.waitSeconds).toBe(total);
-    expect(report.waitSteps).toBe(waits.length);
-  });
-
-  it('the timeouts the export prints total what we count', () => {
-    const polls = numbered.flatMap((r) => [
-      ...r.description.matchAll(/times out after (\d+:\d+:\d+)/g),
-    ]);
-    expect(polls).toHaveLength(8);
-    const total = polls.reduce((sum, m) => sum + seconds(m[1]!), 0);
-    expect(total).toBe(4800);
-    expect(report.pollingSeconds).toBe(total);
-    expect(report.pollingSteps).toBe(polls.length);
-  });
-
-  it('and the two are never added together — 2 minutes against 82', () => {
-    expect(Math.round(report.nominal.max / 60)).toBe(2);
-    expect(Math.round(report.worst.max / 60)).toBe(82);
   });
 });

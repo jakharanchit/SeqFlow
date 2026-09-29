@@ -142,15 +142,7 @@ export interface Rules {
   kinds: Record<string, NodeKind> & { default: NodeKind };
   edges: EdgeRule[];
   labels: Record<string, string[]>;
-  signalAttrs: string[];
   externalRefs: string[];
-  /**
-   * Attributes holding a duration in seconds. Kept as two lists, never one:
-   * a wait is time the sequence spends on purpose and a timeout is an upper
-   * bound it only reaches when something is slow, and adding them together
-   * produces a figure 41x out on the sample. See spec 7.6.
-   */
-  durations: Durations;
   /**
    * Container elements that repeat. Keyed by element name; see `LoopRule`.
    * Absent means no element loops and no back edge is ever drawn.
@@ -167,21 +159,14 @@ export interface Rules {
   showParamsOnCanvas: boolean;
 }
 
-export interface Durations {
-  waits: string[];
-  timeouts: string[];
-}
-
 /**
  * A repeating container. The back edge runs from the container's last leaf to
- * its first, carrying `reason: 'loop'` so that path arithmetic can exclude it
- * (see `duration.ts`) while the diagram still draws it.
+ * its first, carrying `reason: 'loop'` so it can be told apart from a forward
+ * edge while the diagram still draws it.
  */
 export interface LoopRule {
   /** Attribute holding the iteration count. Optional — an unlabelled loop. */
   count?: string;
-  /** Attribute holding the period in seconds, for the timing report. */
-  period?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -196,5 +181,3 @@ export interface ParseOptions {
    */
   domParser: DOMParser;
 }
-
-export type Parse = (xml: string, opts: ParseOptions) => Graph;

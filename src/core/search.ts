@@ -16,7 +16,7 @@
  */
 
 import { ancestors, displayName } from './ancestry';
-import type { Graph, NodeKind, SeqNode } from './types';
+import type { Graph, NodeKind } from './types';
 
 export interface SearchResult {
   uid: string;
@@ -124,16 +124,4 @@ export function elementCounts(graph: Graph): ElementCount[] {
   return [...counts]
     .map(([element, count]) => ({ element, count }))
     .sort((a, b) => b.count - a.count || (a.element < b.element ? -1 : 1));
-}
-
-/** Distinct names in the file, with how many nodes share each. */
-export function nameCounts(graph: Graph): Map<string, SeqNode[]> {
-  const out = new Map<string, SeqNode[]>();
-  for (const node of graph.nodes.values()) {
-    const name = displayName(node);
-    const bucket = out.get(name);
-    if (bucket === undefined) out.set(name, [node]);
-    else bucket.push(node);
-  }
-  return out;
 }

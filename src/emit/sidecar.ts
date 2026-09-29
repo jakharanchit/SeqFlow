@@ -11,7 +11,9 @@
  * collapsed set alongside is not decoration: reloading a file and getting
  * the arrangement back with every sequence re-expanded is not "restored".
  *
- * Pure. Serialising and parsing only — the download lives in the UI.
+ * Pure. Reading and applying only — nothing in the app writes one any more
+ * (the writer went with the Export tab), but a layout file saved by an earlier
+ * build still loads by drop or over the bridge.
  */
 
 import type { FlowNode } from './flow';
@@ -34,38 +36,6 @@ export interface Sidecar {
 }
 
 export class SidecarError extends Error {}
-
-/* ------------------------------------------------------------------ */
-/* Write                                                               */
-/* ------------------------------------------------------------------ */
-
-export function toSidecar(
-  fileName: string,
-  collapsed: ReadonlySet<string>,
-  nodes: readonly FlowNode[],
-): Sidecar {
-  const positions: Record<string, [number, number]> = {};
-  // Sorted, so two saves of the same arrangement are the same bytes and a Git
-  // diff of the sidecar shows what actually moved.
-  for (const node of [...nodes].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
-    positions[node.id] = [round(node.position.x), round(node.position.y)];
-  }
-  return {
-    seqflow: SIDECAR_VERSION,
-    file: fileName,
-    collapsed: [...collapsed].sort(),
-    positions,
-  };
-}
-
-/** Two decimals. ELK places on sub-pixel boundaries; nobody needs more. */
-function round(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
-export function serialiseSidecar(sidecar: Sidecar): string {
-  return `${JSON.stringify(sidecar, null, 2)}\n`;
-}
 
 /* ------------------------------------------------------------------ */
 /* Read                                                                */
@@ -155,9 +125,4 @@ export function applySidecar(nodes: readonly FlowNode[], sidecar: Sidecar): Appl
   });
 
   return { nodes: out, placed, unknown, unplaced };
-}
-
-/** `Sequence_XML.xml` -> `Sequence_XML.layout.json`. */
-export function sidecarName(stem: string): string {
-  return `${stem}.layout.json`;
 }

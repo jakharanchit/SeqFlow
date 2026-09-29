@@ -249,13 +249,10 @@ describe('collapse and highlight', () => {
     expect(svg.text).not.toContain('>Draw down at 4R<');
   });
 
-  test('dim and highlight classes are honoured, and can be switched off', () => {
-    const marked = grouped.nodes.map((n, i) =>
-      i % 2 === 0 ? { ...n, className: 'dimmed' } : { ...n, className: 'on-path' },
-    );
+  test('the dim class is honoured, and can be switched off', () => {
+    const marked = grouped.nodes.map((n, i) => (i % 2 === 0 ? { ...n, className: 'dimmed' } : n));
     const on = toSvg(marked, grouped.edges, { routes: grouped.routes });
     expect(on.text).toContain('opacity="0.2"');
-    expect(on.text).toContain(`stroke="${DARK.accent}"`);
 
     const off = toSvg(marked, grouped.edges, { routes: grouped.routes, highlight: false });
     expect(off.text).not.toContain('opacity="0.2"');

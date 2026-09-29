@@ -171,54 +171,16 @@ labels:
   SelectOption:     [optionTag]
   RecordData:       [type, durationSec]
 
-# Attributes treated as signal/tag references, for the cross-reference index.
-signal_attrs:
-  - sensorTag
-  - switchTag
-  - setpointTag
-  - enumTag
-  - variableTag
-  - tag
-  - optionTag
-  - groupTag
-
 # Attributes holding references to definitions outside this file. Unresolvable
 # by design — do not emit an unresolved-target warning for these.
 external_refs:
   - criteriaMap
 
-# Attributes holding a duration in seconds — spec 7.6, Phase 4 task 3.
-#
-# The two lists are reported separately and never added into one figure.
-# `waits` is time the sequence spends on purpose; `timeouts` is an upper bound
-# it only reaches when something is slow. On the sample that is 2 minutes of
-# wait against 80 minutes of polling timeout, a ratio of 41, and a reader told
-# "2 minutes" would plan a shift around it.
-#
-# A zero is not a duration. 125 of the sample's 133 elements carry
-# timeoutSeconds="0", so the estimator gates on a non-zero value rather than on
-# the attribute being present — "steps with a timeout" selects all of them.
-durations:
-  waits:
-    - time
-    # Time spent averaging a reading. Deliberately a wait and not a timeout: a
-    # recording of a stated duration takes that long every time.
-    - durationSec
-  timeouts:
-    - timeoutSeconds
-
 # Containers that repeat. The back edge runs from the container's last leaf to
-# its first, labelled with `count`, and carries `reason: loop` so the timing
-# report can leave it out of the path arithmetic — see src/core/duration.ts.
-#
-# `period` is the interval between iterations, reported beside the count. It is
-# not added to the estimate: a loop that repeats every hour and takes a minute
-# spends the other 59 waiting, and which of those a reader wants depends on the
-# question they are asking.
+# its first, labelled with `count`, and carries `reason: loop`.
 loops:
   Loop:
     count:  iterations
-    period: period
 
 # Render a target once as a shared terminal, with dotted inbound edges, when
 # more than this many edges converge on it. See spec section 4.5.

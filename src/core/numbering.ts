@@ -72,12 +72,3 @@ export function stepNumbers(graph: Graph): Map<string, string> {
 
   return numbers;
 }
-
-/** uid by step number — the reverse index. Used by search and by the tests. */
-export function byStepNumber(graph: Graph): Map<string, string> {
-  const out = new Map<string, string>();
-  for (const node of graph.nodes.values()) {
-    if (node.stepNumber !== '') out.set(node.stepNumber, node.uid);
-  }
-  return out;
-}

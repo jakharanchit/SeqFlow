@@ -80,15 +80,8 @@ const EXEC_PRIORITY: Record<ExecStatus, number> = {
 
 export function App(): React.JSX.Element {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
-  /**
-   * The rule file in force. `file` is null while the built-in one is in use.
-   * Held together so a re-parse can never read a new rule set and an old
-   * name, which is the sort of mismatch a reader has no way to notice.
-   */
-  const [ruleSet, setRuleSet] = useState<{ rules: Rules; file: string | null }>({
-    rules: BUILT_IN_RULES,
-    file: null,
-  });
+  /** The rule file in force: the built-in one until a `.yaml` is dropped or sent. */
+  const [rules, setRules] = useState<Rules>(BUILT_IN_RULES);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(NO_COLLAPSE);
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [edges, setEdges] = useState<FlowEdge[]>([]);
@@ -207,8 +200,8 @@ export function App(): React.JSX.Element {
    * list. `load` is the page-wide drop handler's only dependency and rebuilding
    * it on every rule change would re-register the listener for no reason.
    */
-  const ruleSetRef = useRef(ruleSet);
-  ruleSetRef.current = ruleSet;
+  const rulesRef = useRef(rules);
+  rulesRef.current = rules;
   /**
    * The LabVIEW bridge's read side. `installBridge` runs once, from a mount
    * effect below, with handlers built from `useCallback(..., [])` — stable
@@ -298,7 +291,7 @@ export function App(): React.JSX.Element {
   const layoutCache = useMemo(
     () => new Map<string, LayoutResult>(),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- identity is the point
-    [graph, ruleSet.rules],
+    [graph, rules],
   );
 
   /**
@@ -323,7 +316,7 @@ export function App(): React.JSX.Element {
     // Always built: `toFlow` is 14 ms on a 5 733-node graph against ELK's
     // 10.7 s, so it is not worth the risk of caching an edge list beside the
     // positions and having the two disagree. Only the layout is cached.
-    const flow = toFlow(asGraph(graph, view), ruleSet.rules, {
+    const flow = toFlow(asGraph(graph, view), rules, {
       collapsedCounts: view.collapsedCounts,
     });
 
@@ -389,7 +382,7 @@ export function App(): React.JSX.Element {
       .finally(() => {
         if (ticket === run.current) setBusy(false);
       });
-  }, [graph, view, collapsed, sidecar, layoutCache, ruleSet.rules]);
+  }, [graph, view, collapsed, sidecar, layoutCache, rules]);
 
   /**
    * Parse and show a sequence. `withRules` lets a newly dropped rule file
@@ -398,13 +391,13 @@ export function App(): React.JSX.Element {
    */
   const load = useCallback(
     (xml: string, fileName: string, withRules?: Rules): void => {
-    const rules = withRules ?? ruleSetRef.current.rules;
+    const active = withRules ?? rulesRef.current;
     setBusy(true);
     setError(null);
     setDismissed(false);
     sourceRef.current = { xml, fileName };
     try {
-      const parsed = parse(xml, { rules, domParser: new DOMParser() });
+      const parsed = parse(xml, { rules: active, domParser: new DOMParser() });
       setLoaded({ graph: parsed, fileName });
       // A large file opens folded. The alternative is a ten-second freeze on
       // arrival, and the reader has not yet said which part they want. Empty
@@ -455,7 +448,7 @@ export function App(): React.JSX.Element {
       return;
     }
 
-    setRuleSet({ rules: next, file: fileName });
+    setRules(next);
     const source = sourceRef.current;
     if (source === null) {
       setError(null);
@@ -465,7 +458,7 @@ export function App(): React.JSX.Element {
   }, [load]);
 
   const clearRuleFile = useCallback((): void => {
-    setRuleSet({ rules: BUILT_IN_RULES, file: null });
+    setRules(BUILT_IN_RULES);
     const source = sourceRef.current;
     if (source !== null) load(source.xml, source.fileName, BUILT_IN_RULES);
   }, [load]);
@@ -668,7 +661,7 @@ export function App(): React.JSX.Element {
 
   const bridgeExportMermaid = useCallback((): string => {
     const g = graphRef.current;
-    return g === null ? '' : toMermaid(g, ruleSetRef.current.rules);
+    return g === null ? '' : toMermaid(g, rulesRef.current);
   }, []);
 
   /** Honours whatever is dimmed/highlighted on the canvas right now, the same
@@ -911,7 +904,7 @@ export function App(): React.JSX.Element {
                 elements={elements}
                 onElementsChange={setElements}
                 available={available}
-                categories={ruleSet.rules.categories}
+                categories={rules.categories}
                 results={results}
                 searching={searching}
                 textSize={outlineTextSize}

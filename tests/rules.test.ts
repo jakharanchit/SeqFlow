@@ -26,7 +26,6 @@ describe('rule file loader', () => {
   it('lifts snake_case keys onto the camelCase Rules type', () => {
     expect(rules.inspectorChildren['ConditionStep']).toEqual(['Comparison']);
     expect(rules.externalRefs).toContain('criteriaMap');
-    expect(rules.signalAttrs).toContain('sensorTag');
     expect(rules.steps).toContain('WaitStep');
   });
 
