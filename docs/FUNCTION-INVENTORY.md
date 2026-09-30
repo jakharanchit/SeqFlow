@@ -218,7 +218,7 @@ functions list only their parent. Test callers are counted by file.
 
 | ID | Name | What it does | Called by | Exported | Status |
 |---:|---|---|---|---|---|
-| 96 | [`SplitBar`](../src/ui/SplitBar.tsx#L19) | The seam between tree and canvas; a drag handle only in "both" mode. | App.tsx App | yes — imported by src | **USED (app)** |
+| 96 | [`SplitBar`](../src/ui/SplitBar.tsx#L16) | The drag handle between tree and canvas; rendered only in "both" mode. | App.tsx App | yes — imported by src | **USED (app)** |
 
 ### `src/ui/StepNum.tsx`
 

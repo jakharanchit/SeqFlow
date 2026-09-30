@@ -113,16 +113,14 @@ body {
 
 /*
  * The seam between the two views (`SplitBar.tsx`). The view mode is set only
- * over the bridge. `useResizable` (App.tsx) drives the drag, but only in `both`.
+ * over the bridge, and the seam is rendered only in `both`. `useResizable`
+ * (App.tsx) drives the drag.
  */
 .split-bar {
   flex: 0 0 6px;
   background: var(--bg-raised);
   border-left: 1px solid var(--line);
   border-right: 1px solid var(--line);
-}
-
-.split-bar.resizable {
   cursor: col-resize;
 }
 

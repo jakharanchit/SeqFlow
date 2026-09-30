@@ -832,11 +832,9 @@ export function App(): React.JSX.Element {
           </div>
         </section>
 
-        <SplitBar
-          mode={viewMode}
-          onHandleDown={outlinePanel.onHandleDown}
-          onReset={outlinePanel.reset}
-        />
+        {viewMode === 'both' && (
+          <SplitBar onHandleDown={outlinePanel.onHandleDown} onReset={outlinePanel.reset} />
+        )}
 
         <div className="canvas-wrap" hidden={!showCanvas}>
           {graph !== null && (
