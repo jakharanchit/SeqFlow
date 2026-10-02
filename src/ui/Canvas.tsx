@@ -23,6 +23,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import type { ZoomMode } from '../bridge/protocol';
 import { EDGE_COLOR, type FlowEdge, type FlowNode, type FlowNodeData } from '../emit/flow';
 import { fitZoom, graphBounds, type Point } from '../layout/elkGraph';
 import { Icon } from './Icon';
@@ -44,6 +45,30 @@ const FAR_SCALE = 0.25;
 const MIN_ZOOM = 0.02;
 const MAX_ZOOM = 2.5;
 const FIT_PADDING = 0.06;
+/** Screen px between the pane's top and the diagram's, in `top` zoom mode. */
+const TOP_GAP = 24;
+
+/**
+ * Retry rather than firing once and hoping. A large file finishes its layout
+ * while the pane is still being measured, and a move that no-ops there leaves
+ * the reader looking at blank canvas with no clue a graph was drawn.
+ *
+ * On a timer and *not* on requestAnimationFrame. Frames do not run in a hidden
+ * or throttled pane, which is precisely when the pane also measures zero and
+ * the retry is most needed: rAF here means one attempt, silently, forever.
+ * Returns the cleanup.
+ */
+function retry(attemptOnce: () => boolean): () => void {
+  let attempts = 0;
+  let id = 0;
+  const attempt = (): void => {
+    if (attemptOnce()) return;
+    if (++attempts > 40) return;
+    id = window.setTimeout(attempt, 50);
+  };
+  id = window.setTimeout(attempt, 60);
+  return () => window.clearTimeout(id);
+}
 
 /**
  * Slack around the diagram, in flow units, beyond which panning stops.
@@ -82,8 +107,10 @@ export interface CanvasProps {
   onSelect: (uid: string | null) => void;
   /** Collapse or expand a sequence. Double-clicking one is the canvas gesture. */
   onToggle: (uid: string) => void;
-  /** Bumped whenever a fresh layout lands, to refit the view. */
+  /** Bumped whenever a fresh layout lands, to place the view per `zoomMode`. */
   layoutKey: number;
+  /** What a fresh layout does to the viewport — see `ZoomMode`. */
+  zoomMode: ZoomMode;
   /**
    * Anything whose change should re-fit the viewport without re-laying out —
    * today, the view mode. Going from flowchart-only back to both halves this
@@ -108,6 +135,7 @@ export function Canvas({
   onSelect,
   onToggle,
   layoutKey,
+  zoomMode,
   refitOn,
   focus,
   showMinimap,
@@ -222,15 +250,48 @@ export function Canvas({
     return true;
   }, [nodes, flow, setZoomVar]);
 
+  /**
+   * Where a fresh layout leaves the viewport. `fit` is `fitAll`; `top` and
+   * `centre` keep the reader's zoom and move to the diagram's first step or
+   * its middle; `keep` does nothing. Returns false when it could not act yet,
+   * like `fitAll` — here judged by `viewportInitialized` rather than a zoom
+   * read-back, because a move that keeps the zoom proves nothing by it.
+   */
+  const placeView = useCallback(
+    (mode: ZoomMode): boolean => {
+      if (mode === 'fit') return fitAll();
+      if (mode === 'keep') return true;
+      const box = graphBounds(nodes);
+      const el = wrap.current;
+      if (box === null || el === null || !flow.viewportInitialized) return false;
+      if (el.clientWidth <= 0 || el.clientHeight <= 0) return false;
+      const zoom = flow.getZoom();
+      const x = box.x + box.width / 2;
+      // `top`: the diagram's top edge a small gap below the pane's.
+      const y =
+        mode === 'top'
+          ? box.y + (el.clientHeight / 2 - TOP_GAP) / zoom
+          : box.y + box.height / 2;
+      void flow.setCenter(x, y, { zoom, duration: 0 });
+      return true;
+    },
+    [nodes, flow, fitAll],
+  );
+
   /*
-   * Only a fresh layout refits. `fitAll` changes identity whenever the node
-   * array does — and selecting a node emits a change, so depending on it here
-   * meant every click zoomed the graph back out.
+   * Read through refs: `fitAll` and `placeView` change identity whenever the
+   * node array does — and selecting a node emits a change, so depending on
+   * them here meant every click zoomed the graph back out. The mode is a ref
+   * too, so changing it acts on the next layout rather than moving the view.
    */
   const latestFit = useRef(fitAll);
+  const latestPlace = useRef(placeView);
+  const zoomModeRef = useRef(zoomMode);
   useEffect(() => {
     latestFit.current = fitAll;
-  }, [fitAll]);
+    latestPlace.current = placeView;
+    zoomModeRef.current = zoomMode;
+  }, [fitAll, placeView, zoomMode]);
 
   /*
    * A pane that had no size and now has one gets the fit it missed.
@@ -249,27 +310,18 @@ export function Canvas({
     if (appeared && layoutKey > 0) latestFit.current();
   }, [pane, layoutKey]);
 
+  /* A fresh layout — load, re-parse, collapse, expand — places the view. */
   useEffect(() => {
     if (layoutKey === 0) return;
-    // Retry rather than firing once and hoping. A large file finishes its
-    // layout while the pane is still being measured, and a fit that no-ops
-    // there leaves the reader looking at blank canvas with no clue a graph was
-    // drawn — the exact failure this whole approach exists to avoid.
-    //
-    // On a timer and *not* on requestAnimationFrame. Frames do not run in a
-    // hidden or throttled pane, which is precisely when the pane also measures
-    // zero and the retry is most needed: rAF here means one attempt, silently,
-    // forever. The same rule already governs every viewport move in this file.
-    let attempts = 0;
-    let id = 0;
-    const attempt = (): void => {
-      if (latestFit.current()) return;
-      if (++attempts > 40) return;
-      id = window.setTimeout(attempt, 50);
-    };
-    id = window.setTimeout(attempt, 60);
-    return () => window.clearTimeout(id);
-  }, [layoutKey, refitOn]);
+    return retry(() => latestPlace.current(zoomModeRef.current));
+  }, [layoutKey]);
+
+  /* A view-mode change always fits: it is a blank-canvas guard, not a load. */
+  useEffect(() => {
+    if (layoutKey === 0) return;
+    return retry(() => latestFit.current());
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refitOn is the trigger
+  }, [refitOn]);
 
   /**
    * Centring waits a beat: a focus request often arrives in the same commit as

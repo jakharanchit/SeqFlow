@@ -17,6 +17,8 @@ import {
   EventQueue,
   asFilePayload,
   asSelectStepPayload,
+  asPngPayload,
+  asZoomModePayload,
   parseCommand,
   serialiseEvents,
   serialiseEventsFlat,
@@ -86,6 +88,31 @@ describe('selectStep payload', () => {
   test('a bare uid', () => {
     expect(asSelectStepPayload({ uid: 'STEP-1' })).toEqual({ uid: 'STEP-1' });
     expect(() => asSelectStepPayload({})).toThrow(/payload.uid must be a string/);
+  });
+});
+
+describe('setZoomMode payload', () => {
+  test('the four modes, and nothing else', () => {
+    for (const mode of ['fit', 'top', 'centre', 'keep']) {
+      expect(asZoomModePayload({ mode })).toEqual({ mode });
+    }
+    expect(() => asZoomModePayload({ mode: 'center' })).toThrow(/payload.mode/);
+    expect(() => asZoomModePayload(undefined)).toThrow(BridgeError);
+  });
+});
+
+describe('exportPng payload', () => {
+  test('absent means the canvas as shown', () => {
+    expect(asPngPayload(undefined)).toEqual({});
+    expect(asPngPayload(null)).toEqual({});
+    expect(asPngPayload({})).toEqual({});
+  });
+
+  test('a depth is a positive integer', () => {
+    expect(asPngPayload({ depth: 2 })).toEqual({ depth: 2 });
+    for (const depth of [0, -1, 1.5, '2']) {
+      expect(() => asPngPayload({ depth })).toThrow(/positive integer/);
+    }
   });
 });
 
@@ -220,6 +247,7 @@ function installed(overrides: Partial<BridgeHandlers> = {}): {
     clearRuleFile: noop,
     selectStep: noop,
     setView: noop,
+    setZoomMode: noop,
     exportMermaid: () => 'flowchart TD',
     exportSvg: () => '<svg/>',
     exportPng: () => Promise.resolve({ base64: 'AA==', width: 1, height: 2 }),
@@ -298,6 +326,30 @@ describe('the installed API', () => {
       JSON.parse(api['handleCommandSync']!('{"type":"selectStep","payload":{"uid":"X"}}')),
     ).toEqual({ ok: false, error: 'no such step', id: null });
     expect(JSON.parse(api['loadXml']!('<a/>'))).toEqual({ ok: true, result: null, id: null });
+  });
+
+  test('setZoomMode reaches its handler', () => {
+    const seen: string[] = [];
+    const api = install({ setZoomMode: (mode) => seen.push(mode) });
+    api['handleCommand']!('{"type":"setZoomMode","payload":{"mode":"keep"}}');
+    expect(seen).toEqual(['keep']);
+  });
+
+  test('exportPng hands its depth to the handler, and rejects a bad one up front', () => {
+    const seen: unknown[] = [];
+    const api = install({
+      exportPng: (options) => {
+        seen.push(options);
+        return Promise.resolve({ base64: 'AA==', width: 1, height: 2 });
+      },
+    });
+    api['handleCommand']!('{"type":"exportPng","payload":{"depth":2}}');
+    api['handleCommand']!('{"type":"exportPng"}');
+    expect(seen).toEqual([{ depth: 2 }, {}]);
+
+    const bad = JSON.parse(api['handleCommand']!('{"id":"p","type":"exportPng","payload":{"depth":0}}'));
+    expect(bad).toMatchObject({ ok: false, id: 'p' });
+    expect(seen).toHaveLength(2);
   });
 
   test('both poll methods drain the same queue — poll one, never both', () => {

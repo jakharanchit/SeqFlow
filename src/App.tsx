@@ -26,12 +26,18 @@ import {
   type Sidecar,
 } from './emit/sidecar';
 import { toFlow, type FlowEdge, type FlowNode } from './emit/flow';
-import { toMermaid } from './emit/mermaid';
+import { collapsedFor, toMermaid } from './emit/mermaid';
 import { toSvg } from './emit/svg';
 import { LayoutTimeout, layout, type LayoutResult } from './layout/elk';
 import type { Point } from './layout/elkGraph';
 import { blobToBase64, installBridge, type InstalledBridge } from './bridge/install';
-import { isViewMode, type ViewMode } from './bridge/protocol';
+import {
+  isViewMode,
+  isZoomMode,
+  type PngOptions,
+  type ViewMode,
+  type ZoomMode,
+} from './bridge/protocol';
 import { svgToPng } from './ui/raster';
 import { Canvas, type FocusRequest } from './ui/Canvas';
 import { Icon } from './ui/Icon';
@@ -67,6 +73,55 @@ const LAYOUT_BUDGET = 600;
 
 /** Distinct arrangements kept per file. A fold and its undo are two. */
 const LAYOUT_CACHE_LIMIT = 12;
+
+/**
+ * The graph folded by `collapsed`, laid out. One pipeline for the canvas and
+ * for a depth-chosen PNG export, sharing one cache: ELK is deterministic, so a
+ * fold already laid out for either is free for the other.
+ */
+async function layoutFor(
+  graph: Graph,
+  collapsed: ReadonlySet<string>,
+  rules: Rules,
+  cache: Map<string, LayoutResult>,
+): Promise<{ edges: FlowEdge[]; placed: LayoutResult }> {
+  const view = visibleGraph(graph, collapsed);
+  // Everything that determines an arrangement. The Map is already per graph
+  // and per rule file, so only the fold state goes in the key.
+  const key = [...collapsed].sort().join(',');
+  const cached = cache.get(key);
+
+  // Always built: `toFlow` is 14 ms on a 5 733-node graph against ELK's
+  // 10.7 s, so it is not worth the risk of caching an edge list beside the
+  // positions and having the two disagree. Only the layout is cached.
+  const flow = toFlow(asGraph(graph, view), rules, {
+    collapsedCounts: view.collapsedCounts,
+  });
+
+  if (cached !== undefined) {
+    // Positions are handed to React Flow, which replaces node objects as they
+    // are dragged. Copy them so a cached arrangement cannot be edited by the
+    // session that used it.
+    return {
+      edges: flow.edges,
+      placed: {
+        ...cached,
+        nodes: cached.nodes.map((n) => ({ ...n, position: { ...n.position } })),
+        elapsedMs: 0,
+      },
+    };
+  }
+
+  const placed = await layout(flow.nodes, flow.edges);
+  // Oldest out first. A Map iterates in insertion order, so the first key is
+  // the least recently added.
+  if (cache.size >= LAYOUT_CACHE_LIMIT) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(key, placed);
+  return { edges: flow.edges, placed };
+}
 
 export function App(): React.JSX.Element {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -139,6 +194,12 @@ export function App(): React.JSX.Element {
     'both',
     (raw) => (isViewMode(raw) ? raw : 'both'),
   );
+  /** What a fresh layout does to the viewport. Bridge-only, like `viewMode`. */
+  const [zoomMode, setZoomMode] = usePersistedState<ZoomMode>(
+    'seqflow.zoomMode',
+    'fit',
+    (raw) => (isZoomMode(raw) ? raw : 'fit'),
+  );
   const [showMinimap, setShowMinimap] = usePersistedState<boolean>(
     'seqflow.showMinimap',
     true,
@@ -208,6 +269,10 @@ export function App(): React.JSX.Element {
   setViewModeRef.current = setViewMode;
   const viewModeRef = useRef<ViewMode>('both');
   viewModeRef.current = viewMode;
+  const setZoomModeRef = useRef<(mode: ZoomMode) => void>(() => {});
+  setZoomModeRef.current = setZoomMode;
+  const zoomModeRef = useRef<ZoomMode>('fit');
+  zoomModeRef.current = zoomMode;
 
   /**
    * The file as parsed: what every analysis panel is about. When a baseline is
@@ -274,6 +339,9 @@ export function App(): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- identity is the point
     [graph, rules],
   );
+  /** Read by the bridge's PNG export, which must not be rebuilt per graph. */
+  const layoutCacheRef = useRef(layoutCache);
+  layoutCacheRef.current = layoutCache;
 
   /**
    * Layout runs whenever the visible graph changes — a collapse toggle
@@ -289,41 +357,8 @@ export function App(): React.JSX.Element {
     const ticket = ++run.current;
     setBusy(true);
 
-    // Everything that determines an arrangement. The Map is already per graph
-    // and per rule file, so only the fold state goes in the key.
-    const key = [...collapsed].sort().join(',');
-    const cached = layoutCache.get(key);
-
-    // Always built: `toFlow` is 14 ms on a 5 733-node graph against ELK's
-    // 10.7 s, so it is not worth the risk of caching an edge list beside the
-    // positions and having the two disagree. Only the layout is cached.
-    const flow = toFlow(asGraph(graph, view), rules, {
-      collapsedCounts: view.collapsedCounts,
-    });
-
-    const pass: Promise<LayoutResult> =
-      cached === undefined
-        ? layout(flow.nodes, flow.edges)
-        : // Positions are handed to React Flow, which replaces node objects as
-          // they are dragged. Copy them so a cached arrangement cannot be
-          // edited by the session that used it.
-          Promise.resolve({
-            ...cached,
-            nodes: cached.nodes.map((n) => ({ ...n, position: { ...n.position } })),
-            elapsedMs: 0,
-          });
-
-    void pass
-      .then((placed) => {
-        if (cached === undefined) {
-          // Oldest out first. A Map iterates in insertion order, so the first
-          // key is the least recently added.
-          if (layoutCache.size >= LAYOUT_CACHE_LIMIT) {
-            const oldest = layoutCache.keys().next().value;
-            if (oldest !== undefined) layoutCache.delete(oldest);
-          }
-          layoutCache.set(key, placed);
-        }
+    void layoutFor(graph, collapsed, rules, layoutCache)
+      .then(({ edges: flowEdges, placed }) => {
         if (ticket !== run.current) return;
         // A saved arrangement wins over the fresh one, node by node. A uid the
         // sidecar does not mention keeps its ELK position rather than piling up
@@ -345,7 +380,7 @@ export function App(): React.JSX.Element {
           setSidecar(null);
         }
         setNodes(laid);
-        setEdges(flow.edges);
+        setEdges(flowEdges);
         setRoutes(placed.routes);
         setLayoutKey((k) => k + 1);
       })
@@ -609,7 +644,15 @@ export function App(): React.JSX.Element {
   }, []);
 
   const bridgeSetView = useCallback((mode: ViewMode): void => {
+    // The ref is written now, not on the next render: a `getState` sent
+    // straight after this must not report the mode it replaced.
+    viewModeRef.current = mode;
     setViewModeRef.current(mode);
+  }, []);
+
+  const bridgeSetZoomMode = useCallback((mode: ZoomMode): void => {
+    zoomModeRef.current = mode;
+    setZoomModeRef.current(mode);
   }, []);
 
   const bridgeExportMermaid = useCallback((): string => {
@@ -628,13 +671,31 @@ export function App(): React.JSX.Element {
     }).text;
   }, []);
 
-  const bridgeExportPng = useCallback(async () => {
+  /** No depth: the canvas as shown. A depth: the file expanded to it, laid out
+   * off screen — the canvas, its folds and its viewport are untouched. */
+  const bridgeExportPng = useCallback(async ({ depth }: PngOptions) => {
     const loaded = loadedRef.current;
-    const svg = toSvg(renderNodesRef.current, renderEdgesRef.current, {
-      routes: routesRef.current,
-      highlight: true,
-      ...(loaded === null ? {} : { title: loaded.fileName }),
-    });
+    const title = loaded === null ? {} : { title: loaded.fileName };
+    let svg;
+    if (depth === undefined) {
+      svg = toSvg(renderNodesRef.current, renderEdgesRef.current, {
+        routes: routesRef.current,
+        highlight: true,
+        ...title,
+      });
+    } else {
+      const g = graphRef.current;
+      if (g === null) throw new Error('no sequence loaded');
+      const collapsedAt = collapsedFor(g, { kind: 'depth', depth });
+      const { edges: flowEdges, placed } = await layoutFor(
+        g,
+        collapsedAt,
+        rulesRef.current,
+        layoutCacheRef.current,
+      );
+      // Search dimming belongs to the canvas, not to an off-screen export.
+      svg = toSvg(placed.nodes, flowEdges, { routes: placed.routes, highlight: false, ...title });
+    }
     const raster = await svgToPng(svg.text, svg.width, svg.height, 1);
     const base64 = await blobToBase64(raster.blob);
     return { base64, width: raster.width, height: raster.height };
@@ -647,6 +708,7 @@ export function App(): React.JSX.Element {
       warnings: warningsRef.current.length,
       selected: selectedDetail(graphRef.current, selectedRef.current),
       view: viewModeRef.current,
+      zoomMode: zoomModeRef.current,
     }),
     [],
   );
@@ -666,6 +728,7 @@ export function App(): React.JSX.Element {
       clearRuleFile,
       selectStep: bridgeSelectStep,
       setView: bridgeSetView,
+      setZoomMode: bridgeSetZoomMode,
       exportMermaid: bridgeExportMermaid,
       exportSvg: bridgeExportSvg,
       exportPng: bridgeExportPng,
@@ -683,6 +746,7 @@ export function App(): React.JSX.Element {
     clearRuleFile,
     bridgeSelectStep,
     bridgeSetView,
+    bridgeSetZoomMode,
     bridgeExportMermaid,
     bridgeExportSvg,
     bridgeExportPng,
@@ -847,6 +911,7 @@ export function App(): React.JSX.Element {
                 onSelect={setSelected}
                 onToggle={toggle}
                 layoutKey={layoutKey}
+                zoomMode={zoomMode}
                 refitOn={viewMode}
                 focus={focus}
                 showMinimap={showMinimap}

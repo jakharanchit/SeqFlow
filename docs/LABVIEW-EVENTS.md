@@ -117,7 +117,7 @@ Notes that matter on the LabVIEW side:
   `{"ok":true,"result":null,"id":null}`, and the next poll carries
   `loadError` with
   `bad.xml: document element <nope> contains no steps — is this a test sequence? …`.
-  Everything else — `selectStep`, `setView`, `clearRuleFile` — is
+  Everything else — `selectStep`, `setView`, `setZoomMode`, `clearRuleFile` — is
   genuinely done when the envelope comes back.
 - **`id` is echoed even when parsing failed**, best-effort: a command whose
   `type` is unknown still has its `id` read back out of the raw text, so a
@@ -129,7 +129,7 @@ Notes that matter on the LabVIEW side:
 ### 1.2 `getState`'s result
 
 `handleCommandSync('{"type":"getState"}')` → `result` is an object with
-exactly these five keys (`bridgeGetState` in `App.tsx`):
+exactly these six keys (`bridgeGetState` in `App.tsx`):
 
 | Key | JS type | Null? | Notes |
 |---|---|---|---|
@@ -138,11 +138,12 @@ exactly these five keys (`bridgeGetState` in `App.tsx`):
 | `warnings` | number | no | count, not the warnings themselves |
 | `selected` | object | **yes** | `null` when nothing is selected — the `stepSelected` payload, below |
 | `view` | string | no | `"tree"`, `"canvas"` or `"both"` |
+| `zoomMode` | string | no | `"fit"`, `"top"`, `"centre"` or `"keep"` — see §4 |
 
 A full reply, nothing loaded:
 
 ```json
-{"ok":true,"result":{"fileName":null,"nodeCount":0,"warnings":0,"selected":null,"view":"both"},"id":null}
+{"ok":true,"result":{"fileName":null,"nodeCount":0,"warnings":0,"selected":null,"view":"both","zoomMode":"fit"},"id":null}
 ```
 
 ## 2. Getting events out
@@ -596,10 +597,35 @@ emits no `stepSelected`** — see §3.1.
 | `clearRuleFile` | — | either |
 | `selectStep` | `{"uid":"..."}` | either |
 | `setView` | `{"view":"tree\|canvas\|both"}` | either |
+| `setZoomMode` | `{"mode":"fit\|top\|centre\|keep"}` | either |
 | `exportMermaid` | — | **`handleCommandSync`** — `result` is the `.mmd` text |
 | `exportSvg` | — | **`handleCommandSync`** — `result` is the SVG text |
-| `exportPng` | — (top-level `id`) | `handleCommand`; result arrives as an event |
+| `exportPng` | optional `{"depth":N}` (top-level `id`) | `handleCommand`; result arrives as an event |
 | `getState` | — | **`handleCommandSync`** — `result` is §1.2's object |
+
+### `setZoomMode`
+
+What a fresh layout does to the viewport. A fresh layout is a load, a rule-file
+re-parse, or a collapse/expand. Persisted in the page like `setView`; default `fit`.
+There is no echo event, because nothing on screen can change it.
+
+| `mode` | Effect |
+|---|---|
+| `fit` | zoom out to fit the whole diagram (the old, only behaviour) |
+| `top` | keep the current zoom; centre horizontally, diagram's first step at the top |
+| `centre` | keep the current zoom; centre on the middle of the diagram |
+| `keep` | leave zoom and pan exactly where they were |
+
+A view-mode change (`setView`) still fits, whatever the mode: it exists to stop
+a resized pane from showing blank canvas.
+
+### `exportPng` with `depth`
+
+With no payload, the PNG is the canvas as shown. `{"depth":N}` renders the file
+expanded to depth N and folds everything deeper. The rule is the same as the
+Mermaid `depth` mode, so `1` is the top-level sequences. The layout runs off
+screen: the canvas, its folds and its viewport do not change. `depth` must be a
+positive integer, or the command fails in its envelope and as a `commandError`.
 
 ## 5. Where the build guide disagrees with the code
 

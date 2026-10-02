@@ -34,6 +34,20 @@ export function isViewMode(value: unknown): value is ViewMode {
   return typeof value === 'string' && VIEW_MODES.has(value);
 }
 
+/**
+ * What a fresh layout — a load, a re-parse, a collapse or expand — does to the
+ * viewport. `fit` zooms out to the whole diagram (the old, only behaviour);
+ * `top` and `centre` keep the current zoom and move to the diagram's first
+ * step or its middle; `keep` leaves zoom and pan exactly where they were.
+ */
+export type ZoomMode = 'fit' | 'top' | 'centre' | 'keep';
+
+const ZOOM_MODES: ReadonlySet<string> = new Set<ZoomMode>(['fit', 'top', 'centre', 'keep']);
+
+export function isZoomMode(value: unknown): value is ZoomMode {
+  return typeof value === 'string' && ZOOM_MODES.has(value);
+}
+
 /* ------------------------------------------------------------------ */
 /* Inbound: LabVIEW -> app                                             */
 /* ------------------------------------------------------------------ */
@@ -48,6 +62,7 @@ export type CommandType =
   | 'exportSvg'
   | 'exportPng'
   | 'setView'
+  | 'setZoomMode'
   | 'getState';
 
 const COMMAND_TYPES: ReadonlySet<string> = new Set<CommandType>([
@@ -60,6 +75,7 @@ const COMMAND_TYPES: ReadonlySet<string> = new Set<CommandType>([
   'exportSvg',
   'exportPng',
   'setView',
+  'setZoomMode',
   'getState',
 ]);
 
@@ -166,6 +182,41 @@ export function asViewPayload(payload: unknown): ViewPayload {
     throw new BridgeError('payload.view must be one of "tree", "canvas", "both"');
   }
   return { view: v };
+}
+
+export interface ZoomModePayload {
+  mode: ZoomMode;
+}
+
+export function asZoomModePayload(payload: unknown): ZoomModePayload {
+  if (typeof payload !== 'object' || payload === null) {
+    throw new BridgeError('payload must be an object with "mode"');
+  }
+  const v = (payload as Record<string, unknown>)['mode'];
+  if (!isZoomMode(v)) {
+    throw new BridgeError('payload.mode must be one of "fit", "top", "centre", "keep"');
+  }
+  return { mode: v };
+}
+
+/**
+ * `exportPng`'s optional payload. No `depth` means the canvas as shown; a
+ * depth renders the file expanded to that depth, off screen — the same rule
+ * as the Mermaid `depth` mode, so `1` is the top-level sequences.
+ */
+export interface PngOptions {
+  depth?: number;
+}
+
+export function asPngPayload(payload: unknown): PngOptions {
+  if (payload === undefined || payload === null) return {};
+  if (typeof payload !== 'object') throw new BridgeError('payload must be an object');
+  const depth = (payload as Record<string, unknown>)['depth'];
+  if (depth === undefined || depth === null) return {};
+  if (typeof depth !== 'number' || !Number.isInteger(depth) || depth < 1) {
+    throw new BridgeError('payload.depth must be a positive integer');
+  }
+  return { depth };
 }
 
 /* ------------------------------------------------------------------ */

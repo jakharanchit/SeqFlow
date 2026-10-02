@@ -79,6 +79,8 @@ import {
   asFilePayload,
   asSelectStepPayload,
   asViewPayload,
+  asZoomModePayload,
+  asPngPayload,
   parseCommand,
   peekCommandId,
   serialiseEvents,
@@ -87,7 +89,9 @@ import {
   type BridgeEvent,
   type Command,
   type EventOrigin,
+  type PngOptions,
   type ViewMode,
+  type ZoomMode,
 } from './protocol';
 import { pushToLabVIEW, toAsciiJson } from './labview';
 
@@ -106,9 +110,10 @@ export interface BridgeHandlers {
   clearRuleFile(): void;
   selectStep(uid: string): void;
   setView(view: ViewMode): void;
+  setZoomMode(mode: ZoomMode): void;
   exportMermaid(): string;
   exportSvg(): string;
-  exportPng(): Promise<PngResult>;
+  exportPng(options: PngOptions): Promise<PngResult>;
   getState(): Record<string, unknown>;
 }
 
@@ -254,19 +259,28 @@ function dispatch(
       handlers.setView(p.view);
       return null;
     }
+    case 'setZoomMode': {
+      const p = asZoomModePayload(command.payload);
+      handlers.setZoomMode(p.mode);
+      return null;
+    }
     case 'exportMermaid':
       return handlers.exportMermaid();
     case 'exportSvg':
       return handlers.exportSvg();
-    case 'exportPng':
+    case 'exportPng': {
+      // Validated before the promise starts, so a bad depth fails in the
+      // envelope like every other payload error rather than as a late event.
+      const options = asPngPayload(command.payload);
       // Fire-and-forget even under handleCommandSync: see the module doc.
       // The id is echoed on the result event so LabVIEW can match it to the
       // command that started it, the way a request-and-wait-for-reply would.
       void handlers
-        .exportPng()
+        .exportPng(options)
         .then((result) => emit('exportPngResult', { id: command.id, ...result }))
         .catch((err: unknown) => emit('exportPngError', { id: command.id, message: message(err) }));
       return null;
+    }
     case 'getState':
       return handlers.getState();
     default: {
