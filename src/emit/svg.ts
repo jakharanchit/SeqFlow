@@ -98,6 +98,12 @@ export interface SvgOptions {
   highlight?: boolean;
   /** Drawn bottom-left. Deterministic: never a timestamp. */
   title?: string;
+  /**
+   * Draw only this rectangle, in flow coordinates — the canvas viewport. The
+   * output is exactly its size; `padding` and `title` are ignored, because
+   * neither is on screen.
+   */
+  clip?: { x: number; y: number; width: number; height: number };
 }
 
 export interface SvgResult {
@@ -291,9 +297,13 @@ export function toSvg(
     maxY = Math.max(maxY, n.ay + n.height);
   }
 
-  const width = Math.round(maxX - minX + padding * 2);
-  const height = Math.round(maxY - minY + padding * 2);
-  const shift = `translate(${round(padding - minX)}, ${round(padding - minY)})`;
+  const clip = options.clip;
+  const width = Math.round(clip?.width ?? maxX - minX + padding * 2);
+  const height = Math.round(clip?.height ?? maxY - minY + padding * 2);
+  const shift =
+    clip === undefined
+      ? `translate(${round(padding - minX)}, ${round(padding - minY)})`
+      : `translate(${round(-clip.x)}, ${round(-clip.y)})`;
 
   const dim = (className: string | undefined): boolean =>
     honour && (className ?? '').includes('dimmed');
@@ -400,7 +410,7 @@ export function toSvg(
   }
 
   out.push('</g>');
-  if (options.title !== undefined && options.title !== '') {
+  if (clip === undefined && options.title !== undefined && options.title !== '') {
     out.push(
       `<text x="${padding}" y="${height - 8}" font-size="10" fill="${p.textFaint}">${esc(options.title)}</text>`,
     );

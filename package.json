@@ -1,7 +1,7 @@
 {
   "name": "seqflow",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.4.1",
   "type": "module",
   "description": "Test sequence XML to interactive flowchart. Read-only.",
   "engines": {
@@ -19,9 +19,11 @@
   "dependencies": {
     "@xyflow/react": "^12.3.5",
     "elkjs": "^0.9.3",
+    "jspdf": "^4.2.1",
     "promise-polyfill": "^8.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "svg2pdf.js": "^2.8.1",
     "yaml": "^2.6.1"
   },
   "devDependencies": {

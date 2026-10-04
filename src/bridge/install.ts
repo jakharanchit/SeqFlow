@@ -80,7 +80,7 @@ import {
   asSelectStepPayload,
   asViewPayload,
   asZoomModePayload,
-  asPngPayload,
+  asExportPayload,
   parseCommand,
   peekCommandId,
   serialiseEvents,
@@ -89,7 +89,7 @@ import {
   type BridgeEvent,
   type Command,
   type EventOrigin,
-  type PngOptions,
+  type ExportOptions,
   type ViewMode,
   type ZoomMode,
 } from './protocol';
@@ -113,7 +113,9 @@ export interface BridgeHandlers {
   setZoomMode(mode: ZoomMode): void;
   exportMermaid(): string;
   exportSvg(): string;
-  exportPng(options: PngOptions): Promise<PngResult>;
+  exportPng(options: ExportOptions): Promise<PngResult>;
+  /** Same shape as PNG; width/height are the page size in pt. */
+  exportPdf(options: ExportOptions): Promise<PngResult>;
   getState(): Record<string, unknown>;
 }
 
@@ -269,9 +271,9 @@ function dispatch(
     case 'exportSvg':
       return handlers.exportSvg();
     case 'exportPng': {
-      // Validated before the promise starts, so a bad depth fails in the
+      // Validated before the promise starts, so a bad view fails in the
       // envelope like every other payload error rather than as a late event.
-      const options = asPngPayload(command.payload);
+      const options = asExportPayload(command.payload);
       // Fire-and-forget even under handleCommandSync: see the module doc.
       // The id is echoed on the result event so LabVIEW can match it to the
       // command that started it, the way a request-and-wait-for-reply would.
@@ -279,6 +281,15 @@ function dispatch(
         .exportPng(options)
         .then((result) => emit('exportPngResult', { id: command.id, ...result }))
         .catch((err: unknown) => emit('exportPngError', { id: command.id, message: message(err) }));
+      return null;
+    }
+    case 'exportPdf': {
+      // Same contract as exportPng: payload checked up front, result later.
+      const options = asExportPayload(command.payload);
+      void handlers
+        .exportPdf(options)
+        .then((result) => emit('exportPdfResult', { id: command.id, ...result }))
+        .catch((err: unknown) => emit('exportPdfError', { id: command.id, message: message(err) }));
       return null;
     }
     case 'getState':

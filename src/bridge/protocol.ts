@@ -61,6 +61,7 @@ export type CommandType =
   | 'exportMermaid'
   | 'exportSvg'
   | 'exportPng'
+  | 'exportPdf'
   | 'setView'
   | 'setZoomMode'
   | 'getState';
@@ -74,6 +75,7 @@ const COMMAND_TYPES: ReadonlySet<string> = new Set<CommandType>([
   'exportMermaid',
   'exportSvg',
   'exportPng',
+  'exportPdf',
   'setView',
   'setZoomMode',
   'getState',
@@ -200,23 +202,33 @@ export function asZoomModePayload(payload: unknown): ZoomModePayload {
 }
 
 /**
- * `exportPng`'s optional payload. No `depth` means the canvas as shown; a
- * depth renders the file expanded to that depth, off screen — the same rule
- * as the Mermaid `depth` mode, so `1` is the top-level sequences.
+ * `exportPng`'s and `exportPdf`'s optional payload. Both views are of the
+ * canvas as it is now — its folds, its highlight:
+ * - `full` (the default): the whole diagram;
+ * - `viewport`: only what is visible in the pane, at its current zoom.
+ *
+ * `depth` was removed on 2026-10-04 and is refused by name, so a LabVIEW VI
+ * built against the old payload fails loudly instead of exporting the wrong view.
  */
-export interface PngOptions {
-  depth?: number;
+export type ExportView = 'full' | 'viewport';
+
+export interface ExportOptions {
+  view: ExportView;
 }
 
-export function asPngPayload(payload: unknown): PngOptions {
-  if (payload === undefined || payload === null) return {};
+export function asExportPayload(payload: unknown): ExportOptions {
+  if (payload === undefined || payload === null) return { view: 'full' };
   if (typeof payload !== 'object') throw new BridgeError('payload must be an object');
-  const depth = (payload as Record<string, unknown>)['depth'];
-  if (depth === undefined || depth === null) return {};
-  if (typeof depth !== 'number' || !Number.isInteger(depth) || depth < 1) {
-    throw new BridgeError('payload.depth must be a positive integer');
+  const v = payload as Record<string, unknown>;
+  if ('depth' in v) {
+    throw new BridgeError('payload.depth is no longer supported; use "view": "full" or "viewport"');
   }
-  return { depth };
+  const view = v['view'];
+  if (view === undefined || view === null) return { view: 'full' };
+  if (view !== 'full' && view !== 'viewport') {
+    throw new BridgeError('payload.view must be one of "full", "viewport"');
+  }
+  return { view };
 }
 
 /* ------------------------------------------------------------------ */

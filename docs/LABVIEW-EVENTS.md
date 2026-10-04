@@ -357,7 +357,7 @@ known crash, so check the version before debugging anything else.
 
 ## 3. Every event
 
-Nine types. Seven are pushed by the app; `bridgeReady` only ever comes from
+Eleven types. Nine are pushed by the app; `bridgeReady` only ever comes from
 `attachLabVIEW`, and `pollError` only from the poll methods.
 
 **Two of them fire once at start-up**, before LabVIEW has sent anything: a
@@ -583,6 +583,33 @@ stop arriving — poll once to find out whether the queue has been filling up.
 [{"type":"pollError","at":1789999921302,"payload":"{\"message\":\"Converting circular structure to JSON\"}"}]
 ```
 
+### 3.9 `exportPdfResult`
+
+**Emitted** when an `exportPdf` command finishes. Same keys as
+`exportPngResult` (§3.5); the PDF is vector, with real, selectable text.
+
+| Key | JS type | Null? | Notes |
+|---|---|---|---|
+| `id` | string | **yes** | the `id` from the command that started it |
+| `base64` | string | no | the whole `.pdf` file, raw base64, no `data:` prefix — always starts `JVBERi0` (`%PDF-`) |
+| `width` | number | no | page width in **pt** |
+| `height` | number | no | page height in **pt** |
+
+From the built page with the fixture fully expanded, `{"view":"full"}`, base64
+truncated (about 200 KB in full):
+
+```json
+{"type":"exportPdfResult","at":1791000360000,"payload":"{\"id\":\"p3\",\"base64\":\"JVBERi0xLjMKJbrfrOAK...\",\"width\":1191,\"height\":11754}"}
+```
+
+A page longer than 14 400 pt (the limit in Acrobat and most PDF viewers) is
+scaled down to fit, and `width`/`height` give the scaled size. It is still
+vector, so zooming in brings the detail back.
+
+### 3.10 `exportPdfError`
+
+As `exportPngError` (§3.6): `{"id":...,"message":"..."}`.
+
 ## 4. Commands, for completeness
 
 Unchanged in shape by protocol 3. `id` is optional on every one and is echoed
@@ -600,7 +627,8 @@ emits no `stepSelected`** — see §3.1.
 | `setZoomMode` | `{"mode":"fit\|top\|centre\|keep"}` | either |
 | `exportMermaid` | — | **`handleCommandSync`** — `result` is the `.mmd` text |
 | `exportSvg` | — | **`handleCommandSync`** — `result` is the SVG text |
-| `exportPng` | optional `{"depth":N}` (top-level `id`) | `handleCommand`; result arrives as an event |
+| `exportPng` | optional `{"view":"full\|viewport"}` (top-level `id`) | `handleCommand`; result arrives as an event |
+| `exportPdf` | optional `{"view":"full\|viewport"}` (top-level `id`) | `handleCommand`; result arrives as an event |
 | `getState` | — | **`handleCommandSync`** — `result` is §1.2's object |
 
 ### `setZoomMode`
@@ -619,13 +647,41 @@ There is no echo event, because nothing on screen can change it.
 A view-mode change (`setView`) still fits, whatever the mode: it exists to stop
 a resized pane from showing blank canvas.
 
-### `exportPng` with `depth`
+### `exportPng` / `exportPdf` and `view`
 
-With no payload, the PNG is the canvas as shown. `{"depth":N}` renders the file
-expanded to depth N and folds everything deeper. The rule is the same as the
-Mermaid `depth` mode, so `1` is the top-level sequences. The layout runs off
-screen: the canvas, its folds and its viewport do not change. `depth` must be a
-positive integer, or the command fails in its envelope and as a `commandError`.
+Both export the canvas **as it is now**, with its folds and its search highlight,
+always in the light palette.
+
+| `view` | Exports | PNG size | PDF page |
+|---|---|---|---|
+| `full` (default; also no payload) | the whole diagram | diagram size, 1 px per unit | diagram size, 1 pt per unit |
+| `viewport` | only what the canvas pane shows | the pane in **screen** pixels (CSS size × zoom × display scaling) | the same rectangle in diagram units, vector |
+
+Measured on a 1280×720 pane at 125 % display scaling: the viewport PNG is
+1600×900. A viewport export with the canvas hidden (`tree` view) fails with
+`exportPngError` / `exportPdfError`, message `the canvas is not visible`.
+
+Any other `view` fails in the envelope and as a `commandError`. So does `depth`,
+which was removed on 2026-10-04 and is refused by name,
+`payload.depth is no longer supported`, so that an old caller fails loudly.
+
+The canvas's copy button (under the minimap toggle) puts the viewport PNG on the
+clipboard. It is page-only: it fires no event and LabVIEW sends nothing for it.
+
+### `exportPdf`, and writing the file in LabVIEW
+
+`view` works exactly as it does for `exportPng`. Request-and-wait-for-reply:
+
+1. The request case sends `handleCommand` with a fresh `id`. A `{"ok":false}`
+   reply means the command was refused: reply with that error now.
+2. Otherwise, store the reply token and target path under that `id`.
+3. On `exportPdfResult` (or `exportPdfError`) carrying that `id`:
+   - decode `base64` to a U8 array, with .NET `System.Convert.FromBase64String`
+     or a native Base64 decode;
+   - write it with **Write to Binary File**, with **prepend array or string
+     size? = False**. True adds a 4-byte length header and the PDF will not open;
+   - send the reply, then broadcast.
+4. Set the caller's timeout to 30–60 s. A whole-diagram PNG takes a few seconds.
 
 ## 5. Where the build guide disagrees with the code
 

@@ -6,6 +6,14 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 // worker is inlined as a blob by `worker.format: 'es'` + singlefile.
 export default defineConfig({
   plugins: [react(), viteSingleFile()],
+  // jsPDF's optional deps serve only its .html(); singlefile would inline them.
+  resolve: {
+    alias: {
+      html2canvas: '/src/ui/empty.ts',
+      dompurify: '/src/ui/empty.ts',
+      canvg: '/src/ui/empty.ts',
+    },
+  },
   worker: { format: 'es' },
   build: {
     target: 'es2022',

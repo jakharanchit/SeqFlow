@@ -26,20 +26,22 @@ import {
   type Sidecar,
 } from './emit/sidecar';
 import { toFlow, type FlowEdge, type FlowNode } from './emit/flow';
-import { collapsedFor, toMermaid } from './emit/mermaid';
-import { toSvg } from './emit/svg';
+import { toMermaid } from './emit/mermaid';
+import { toSvg, type SvgResult } from './emit/svg';
 import { LayoutTimeout, layout, type LayoutResult } from './layout/elk';
 import type { Point } from './layout/elkGraph';
 import { blobToBase64, installBridge, type InstalledBridge } from './bridge/install';
 import {
   isViewMode,
   isZoomMode,
-  type PngOptions,
+  type ExportOptions,
+  type ExportView,
   type ViewMode,
   type ZoomMode,
 } from './bridge/protocol';
 import { svgToPng } from './ui/raster';
-import { Canvas, type FocusRequest } from './ui/Canvas';
+import { svgToPdf } from './ui/pdf';
+import { Canvas, type FocusRequest, type ViewportRect } from './ui/Canvas';
 import { Icon } from './ui/Icon';
 import { SplitBar } from './ui/SplitBar';
 import { Outline, type HideableColumn } from './ui/Outline';
@@ -76,7 +78,7 @@ const LAYOUT_CACHE_LIMIT = 12;
 
 /**
  * The graph folded by `collapsed`, laid out. One pipeline for the canvas and
- * for a depth-chosen PNG export, sharing one cache: ELK is deterministic, so a
+ * for anything else that needs a fold laid out, sharing one cache: ELK is deterministic, so a
  * fold already laid out for either is free for the other.
  */
 async function layoutFor(
@@ -256,6 +258,8 @@ export function App(): React.JSX.Element {
   const renderNodesRef = useRef<readonly FlowNode[]>([]);
   const renderEdgesRef = useRef<readonly FlowEdge[]>([]);
   const routesRef = useRef<ReadonlyMap<string, Point[]>>(new Map());
+  /** Filled by the canvas: the visible rectangle, or null when it has none. */
+  const viewportRef = useRef<(() => ViewportRect | null) | null>(null);
   const selectedRef = useRef<string | null>(null);
   const loadedRef = useRef<Loaded | null>(null);
   const warningsRef = useRef<Warning[]>([]);
@@ -667,39 +671,79 @@ export function App(): React.JSX.Element {
     return toSvg(renderNodesRef.current, renderEdgesRef.current, {
       routes: routesRef.current,
       highlight: true,
+      theme: 'light',
       ...(loaded === null ? {} : { title: loaded.fileName }),
     }).text;
   }, []);
 
-  /** No depth: the canvas as shown. A depth: the file expanded to it, laid out
-   * off screen — the canvas, its folds and its viewport are untouched. */
-  const bridgeExportPng = useCallback(async ({ depth }: PngOptions) => {
-    const loaded = loadedRef.current;
-    const title = loaded === null ? {} : { title: loaded.fileName };
-    let svg;
-    if (depth === undefined) {
-      svg = toSvg(renderNodesRef.current, renderEdgesRef.current, {
+  /**
+   * The canvas as it is now — its folds, its highlight — as a light SVG.
+   * `full` is the whole diagram; `viewport` crops to what the pane shows and
+   * also returns the scale that rasterises it at the pane's own pixel size.
+   * Shared by both bridge exports and the copy button, so the three can never
+   * disagree about what "what you see" means.
+   */
+  const canvasSvg = useCallback((view: ExportView): { svg: SvgResult; scale: number } => {
+    if (view === 'full') {
+      const loaded = loadedRef.current;
+      const svg = toSvg(renderNodesRef.current, renderEdgesRef.current, {
         routes: routesRef.current,
         highlight: true,
-        ...title,
+        theme: 'light',
+        ...(loaded === null ? {} : { title: loaded.fileName }),
       });
-    } else {
-      const g = graphRef.current;
-      if (g === null) throw new Error('no sequence loaded');
-      const collapsedAt = collapsedFor(g, { kind: 'depth', depth });
-      const { edges: flowEdges, placed } = await layoutFor(
-        g,
-        collapsedAt,
-        rulesRef.current,
-        layoutCacheRef.current,
-      );
-      // Search dimming belongs to the canvas, not to an off-screen export.
-      svg = toSvg(placed.nodes, flowEdges, { routes: placed.routes, highlight: false, ...title });
+      return { svg, scale: 1 };
     }
-    const raster = await svgToPng(svg.text, svg.width, svg.height, 1);
-    const base64 = await blobToBase64(raster.blob);
-    return { base64, width: raster.width, height: raster.height };
+    const rect = viewportRef.current?.() ?? null;
+    if (rect === null) throw new Error('the canvas is not visible');
+    const svg = toSvg(renderNodesRef.current, renderEdgesRef.current, {
+      routes: routesRef.current,
+      highlight: true,
+      theme: 'light',
+      clip: rect,
+    });
+    // Screen pixels, not CSS pixels: what the reader actually sees.
+    return { svg, scale: rect.zoom * (window.devicePixelRatio || 1) };
   }, []);
+
+  const bridgeExportPng = useCallback(
+    async ({ view }: ExportOptions) => {
+      const { svg, scale } = canvasSvg(view);
+      const raster = await svgToPng(svg.text, svg.width, svg.height, scale);
+      const base64 = await blobToBase64(raster.blob);
+      return { base64, width: raster.width, height: raster.height };
+    },
+    [canvasSvg],
+  );
+
+  /** Kept apart from `bridgeExportPng` on purpose: same SVG, vector PDF out.
+   * A viewport page is the visible rectangle in flow units — vector, so the
+   * zoom does not matter. */
+  const bridgeExportPdf = useCallback(
+    async ({ view }: ExportOptions) => {
+      const { svg } = canvasSvg(view);
+      return svgToPdf(svg.text, svg.width, svg.height);
+    },
+    [canvasSvg],
+  );
+
+  /**
+   * The canvas copy button: the viewport, as a PNG, onto the clipboard.
+   *
+   * `clipboard.write` is called synchronously inside the click and handed the
+   * PNG as a promise. Rendering takes long enough that awaiting it first would
+   * outlive the click's user activation, and the write would be refused.
+   */
+  const copyViewport = useCallback((): Promise<void> => {
+    if (typeof ClipboardItem === 'undefined' || navigator.clipboard?.write === undefined) {
+      return Promise.reject(new Error('this browser cannot put an image on the clipboard'));
+    }
+    const png = (async () => {
+      const { svg, scale } = canvasSvg('viewport');
+      return (await svgToPng(svg.text, svg.width, svg.height, scale)).blob;
+    })();
+    return navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+  }, [canvasSvg]);
 
   const bridgeGetState = useCallback(
     (): Record<string, unknown> => ({
@@ -732,6 +776,7 @@ export function App(): React.JSX.Element {
       exportMermaid: bridgeExportMermaid,
       exportSvg: bridgeExportSvg,
       exportPng: bridgeExportPng,
+      exportPdf: bridgeExportPdf,
       getState: bridgeGetState,
     });
     bridgeRef.current = installed;
@@ -750,6 +795,7 @@ export function App(): React.JSX.Element {
     bridgeExportMermaid,
     bridgeExportSvg,
     bridgeExportPng,
+    bridgeExportPdf,
     bridgeGetState,
   ]);
 
@@ -916,6 +962,8 @@ export function App(): React.JSX.Element {
                 focus={focus}
                 showMinimap={showMinimap}
                 onShowMinimap={setShowMinimap}
+                viewportRef={viewportRef}
+                onCopy={copyViewport}
               />
             </ReactFlowProvider>
           )}

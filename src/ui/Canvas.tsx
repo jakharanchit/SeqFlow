@@ -39,6 +39,19 @@ export interface FocusRequest {
   seq: number;
 }
 
+/** The visible part of the diagram, in flow coordinates, and the zoom it is
+ * shown at. What a viewport export crops to. */
+export interface ViewportRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  zoom: number;
+}
+
+/** How long the copy button shows its result before going back to the icon. */
+const COPY_FEEDBACK_MS = 1500;
+
 /** Below this scale, step labels are unreadable and are not drawn. */
 const FAR_SCALE = 0.25;
 
@@ -125,6 +138,10 @@ export interface CanvasProps {
   focus: FocusRequest | null;
   showMinimap: boolean;
   onShowMinimap: (on: boolean) => void;
+  /** The canvas fills this with a reader of its visible rectangle. */
+  viewportRef: React.MutableRefObject<(() => ViewportRect | null) | null>;
+  /** Copy the viewport to the clipboard. Called inside the click. */
+  onCopy: () => Promise<void>;
 }
 
 export function Canvas({
@@ -140,6 +157,8 @@ export function Canvas({
   focus,
   showMinimap,
   onShowMinimap,
+  viewportRef,
+  onCopy,
 }: CanvasProps): React.JSX.Element {
   const flow = useReactFlow();
 
@@ -195,6 +214,33 @@ export function Canvas({
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  /** React Flow's transform is relative to this same box: screen = flow * zoom + (x, y). */
+  useEffect(() => {
+    viewportRef.current = () => {
+      const el = wrap.current;
+      if (el === null || el.clientWidth <= 0 || el.clientHeight <= 0) return null;
+      const { x, y, zoom } = flow.getViewport();
+      return { x: -x / zoom, y: -y / zoom, width: el.clientWidth / zoom, height: el.clientHeight / zoom, zoom };
+    };
+    return () => {
+      viewportRef.current = null;
+    };
+  }, [flow, viewportRef]);
+
+  /** The copy button says how it went; a clipboard refusal is never silent. */
+  const [copied, setCopied] = useState<{ ok: boolean; message: string } | null>(null);
+  useEffect(() => {
+    if (copied === null) return;
+    const id = window.setTimeout(() => setCopied(null), COPY_FEEDBACK_MS);
+    return () => window.clearTimeout(id);
+  }, [copied]);
+  const copy = (): void => {
+    onCopy().then(
+      () => setCopied({ ok: true, message: 'Copied' }),
+      (err: unknown) => setCopied({ ok: false, message: `Copy failed: ${err instanceof Error ? err.message : String(err)}` }),
+    );
+  };
 
   /**
    * How far the canvas may be dragged: the diagram's own bounds plus enough
@@ -448,7 +494,7 @@ export function Canvas({
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#d8d8d8" />
         {/*
-          * All four buttons are ours. React Flow's built-in zoom and fit
+          * All five buttons are ours. React Flow's built-in zoom and fit
           * buttons carry their own inline SVGs, which are not reachable from
           * `src/` and so could not be brought onto the app's icon set — with
           * the minimap button beside them the row read as two icon sets in
@@ -480,6 +526,14 @@ export function Canvas({
             className={showMinimap ? 'minimap-toggle on' : 'minimap-toggle'}
           >
             <Icon name="map" />
+          </ControlButton>
+          <ControlButton
+            onClick={copy}
+            title={copied?.message ?? 'Copy what is on screen as an image'}
+            aria-label="Copy view as image"
+            className={copied === null ? 'copy-view' : copied.ok ? 'copy-view ok' : 'copy-view fail'}
+          >
+            <Icon name={copied === null ? 'content_copy' : copied.ok ? 'check' : 'close'} />
           </ControlButton>
         </Controls>
         {showMinimap && (

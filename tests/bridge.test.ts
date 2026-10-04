@@ -17,7 +17,7 @@ import {
   EventQueue,
   asFilePayload,
   asSelectStepPayload,
-  asPngPayload,
+  asExportPayload,
   asZoomModePayload,
   parseCommand,
   serialiseEvents,
@@ -101,17 +101,24 @@ describe('setZoomMode payload', () => {
   });
 });
 
-describe('exportPng payload', () => {
-  test('absent means the canvas as shown', () => {
-    expect(asPngPayload(undefined)).toEqual({});
-    expect(asPngPayload(null)).toEqual({});
-    expect(asPngPayload({})).toEqual({});
+describe('export payload (exportPng, exportPdf)', () => {
+  test('absent means the full diagram', () => {
+    expect(asExportPayload(undefined)).toEqual({ view: 'full' });
+    expect(asExportPayload(null)).toEqual({ view: 'full' });
+    expect(asExportPayload({})).toEqual({ view: 'full' });
   });
 
-  test('a depth is a positive integer', () => {
-    expect(asPngPayload({ depth: 2 })).toEqual({ depth: 2 });
-    for (const depth of [0, -1, 1.5, '2']) {
-      expect(() => asPngPayload({ depth })).toThrow(/positive integer/);
+  test('view is full or viewport', () => {
+    expect(asExportPayload({ view: 'full' })).toEqual({ view: 'full' });
+    expect(asExportPayload({ view: 'viewport' })).toEqual({ view: 'viewport' });
+    for (const view of ['screen', '', 1, true]) {
+      expect(() => asExportPayload({ view })).toThrow(/"full", "viewport"/);
+    }
+  });
+
+  test('depth is refused by name, so an old caller fails loudly', () => {
+    for (const depth of [3, 0, null]) {
+      expect(() => asExportPayload({ depth })).toThrow(/depth is no longer supported/);
     }
   });
 });
@@ -251,6 +258,7 @@ function installed(overrides: Partial<BridgeHandlers> = {}): {
     exportMermaid: () => 'flowchart TD',
     exportSvg: () => '<svg/>',
     exportPng: () => Promise.resolve({ base64: 'AA==', width: 1, height: 2 }),
+    exportPdf: () => Promise.resolve({ base64: 'JVBERi0=', width: 1, height: 2 }),
     getState: () => ({ fileName: null, nodeCount: 0 }),
     ...overrides,
   });
@@ -335,7 +343,7 @@ describe('the installed API', () => {
     expect(seen).toEqual(['keep']);
   });
 
-  test('exportPng hands its depth to the handler, and rejects a bad one up front', () => {
+  test('exportPng hands its view to the handler, and rejects a bad one up front', () => {
     const seen: unknown[] = [];
     const api = install({
       exportPng: (options) => {
@@ -343,13 +351,40 @@ describe('the installed API', () => {
         return Promise.resolve({ base64: 'AA==', width: 1, height: 2 });
       },
     });
-    api['handleCommand']!('{"type":"exportPng","payload":{"depth":2}}');
+    api['handleCommand']!('{"type":"exportPng","payload":{"view":"viewport"}}');
     api['handleCommand']!('{"type":"exportPng"}');
-    expect(seen).toEqual([{ depth: 2 }, {}]);
+    expect(seen).toEqual([{ view: 'viewport' }, { view: 'full' }]);
 
-    const bad = JSON.parse(api['handleCommand']!('{"id":"p","type":"exportPng","payload":{"depth":0}}'));
+    const bad = JSON.parse(api['handleCommand']!('{"id":"p","type":"exportPng","payload":{"depth":2}}'));
     expect(bad).toMatchObject({ ok: false, id: 'p' });
     expect(seen).toHaveLength(2);
+  });
+
+  test('exportPdf replies later with its id, or an error event', async () => {
+    const seen: unknown[] = [];
+    const api = install({
+      exportPdf: (options) => {
+        seen.push(options);
+        return options.view === 'viewport'
+          ? Promise.reject(new Error('boom'))
+          : Promise.resolve({ base64: 'JVBERi0=', width: 3, height: 4 });
+      },
+    });
+    expect(JSON.parse(api['handleCommand']!('{"id":"a","type":"exportPdf","payload":{"view":"full"}}'))).toMatchObject({
+      ok: true,
+      id: 'a',
+    });
+    api['handleCommand']!('{"id":"b","type":"exportPdf","payload":{"view":"viewport"}}');
+    const bad = JSON.parse(api['handleCommand']!('{"id":"c","type":"exportPdf","payload":{"view":"page"}}'));
+    expect(bad).toMatchObject({ ok: false, id: 'c' });
+    expect(seen).toEqual([{ view: 'full' }, { view: 'viewport' }]);
+
+    await new Promise((r) => setTimeout(r, 0));
+    const events = (JSON.parse(api['pollEvents']!()) as BridgeEvent[]).filter((e) => e.type.startsWith('exportPdf'));
+    expect(events.map((e) => [e.type, e.payload])).toEqual([
+      ['exportPdfResult', { id: 'a', base64: 'JVBERi0=', width: 3, height: 4 }],
+      ['exportPdfError', { id: 'b', message: 'boom' }],
+    ]);
   });
 
   test('both poll methods drain the same queue — poll one, never both', () => {

@@ -408,6 +408,14 @@ body {
   fill: var(--accent);
 }
 
+.react-flow__controls-button.copy-view.ok {
+  fill: var(--accent);
+}
+
+.react-flow__controls-button.copy-view.fail {
+  fill: var(--error);
+}
+
 .react-flow__controls-button svg {
   width: 14px;
   height: 14px;

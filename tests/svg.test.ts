@@ -286,6 +286,23 @@ describe('themes', () => {
   });
 });
 
+describe('viewport clip', () => {
+  test('the output is exactly the clip, shifted to its origin, with no title', () => {
+    const clip = { x: 120.5, y: 300, width: 640, height: 360 };
+    const svg = toSvg(grouped.nodes, grouped.edges, {
+      routes: grouped.routes,
+      title: 'Sequence_XML.xml',
+      clip,
+    });
+    expect([svg.width, svg.height]).toEqual([640, 360]);
+    expect(svg.text).toContain('viewBox="0 0 640 360"');
+    expect(svg.text).toContain('translate(-120.5, -300)');
+    expect(svg.text).not.toContain('Sequence_XML.xml');
+    // Still the whole drawing underneath — the viewBox does the cropping.
+    expect(countTags(svg.text, 'polyline')).toBe(grouped.edges.length);
+  });
+});
+
 describe('determinism', () => {
   test('two calls are byte-identical', () => {
     const a = toSvg(grouped.nodes, grouped.edges, { routes: grouped.routes });
