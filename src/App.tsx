@@ -728,18 +728,19 @@ export function App(): React.JSX.Element {
   );
 
   /**
-   * The canvas copy button: the viewport, as a PNG, onto the clipboard.
+   * The canvas copy button: the whole diagram, folded as it is on screen, as a
+   * PNG, onto the clipboard.
    *
    * `clipboard.write` is called synchronously inside the click and handed the
    * PNG as a promise. Rendering takes long enough that awaiting it first would
    * outlive the click's user activation, and the write would be refused.
    */
-  const copyViewport = useCallback((): Promise<void> => {
+  const copyCanvas = useCallback((): Promise<void> => {
     if (typeof ClipboardItem === 'undefined' || navigator.clipboard?.write === undefined) {
       return Promise.reject(new Error('this browser cannot put an image on the clipboard'));
     }
     const png = (async () => {
-      const { svg, scale } = canvasSvg('viewport');
+      const { svg, scale } = canvasSvg('full');
       return (await svgToPng(svg.text, svg.width, svg.height, scale)).blob;
     })();
     return navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
@@ -963,7 +964,7 @@ export function App(): React.JSX.Element {
                 showMinimap={showMinimap}
                 onShowMinimap={setShowMinimap}
                 viewportRef={viewportRef}
-                onCopy={copyViewport}
+                onCopy={copyCanvas}
               />
             </ReactFlowProvider>
           )}

@@ -140,7 +140,7 @@ export interface CanvasProps {
   onShowMinimap: (on: boolean) => void;
   /** The canvas fills this with a reader of its visible rectangle. */
   viewportRef: React.MutableRefObject<(() => ViewportRect | null) | null>;
-  /** Copy the viewport to the clipboard. Called inside the click. */
+  /** Copy the whole diagram to the clipboard. Called inside the click. */
   onCopy: () => Promise<void>;
 }
 
@@ -529,8 +529,8 @@ export function Canvas({
           </ControlButton>
           <ControlButton
             onClick={copy}
-            title={copied?.message ?? 'Copy what is on screen as an image'}
-            aria-label="Copy view as image"
+            title={copied?.message ?? 'Copy the whole flowchart as an image'}
+            aria-label="Copy flowchart as image"
             className={copied === null ? 'copy-view' : copied.ok ? 'copy-view ok' : 'copy-view fail'}
           >
             <Icon name={copied === null ? 'content_copy' : copied.ok ? 'check' : 'close'} />
