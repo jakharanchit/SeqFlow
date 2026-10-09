@@ -255,6 +255,10 @@ function installed(overrides: Partial<BridgeHandlers> = {}): {
     selectStep: noop,
     setView: noop,
     setZoomMode: noop,
+    expandNode: noop,
+    collapseNode: noop,
+    expandAll: noop,
+    collapseAll: noop,
     exportMermaid: () => 'flowchart TD',
     exportSvg: () => '<svg/>',
     exportPng: () => Promise.resolve({ base64: 'AA==', width: 1, height: 2 }),
@@ -529,6 +533,62 @@ describe('setEventSink', () => {
  * state; the echo arrives later, from the effect keyed on it. These model that
  * two-step directly — a command, then the enqueue it eventually causes.
  */
+describe('fold commands and events', () => {
+  test('each command reaches its handler with the uid', () => {
+    const calls: string[] = [];
+    const api = install({
+      expandNode: (uid) => calls.push(`expand ${uid}`),
+      collapseNode: (uid) => calls.push(`collapse ${uid}`),
+      expandAll: () => calls.push('expandAll'),
+      collapseAll: () => calls.push('collapseAll'),
+    });
+    for (const text of [
+      '{"type":"expandNode","payload":{"uid":"SEQ-1"}}',
+      '{"type":"collapseNode","payload":{"uid":"SEQ-2"}}',
+      '{"type":"expandAll"}',
+      '{"type":"collapseAll"}',
+    ]) {
+      expect(JSON.parse(api['handleCommand']!(text))).toMatchObject({ ok: true });
+    }
+    expect(calls).toEqual(['expand SEQ-1', 'collapse SEQ-2', 'expandAll', 'collapseAll']);
+  });
+
+  test('a missing uid is refused by name', () => {
+    const api = install();
+    const reply = JSON.parse(api['handleCommand']!('{"id":"f1","type":"collapseNode"}'));
+    expect(reply).toMatchObject({ ok: false, id: 'f1' });
+    expect(reply.error).toMatch(/uid/);
+  });
+
+  test('a handler refusing a leaf comes back as ok:false plus commandError', () => {
+    const api = install({
+      expandNode: () => {
+        throw new Error('"STEP-1" is a step, not a sequence');
+      },
+    });
+    const reply = JSON.parse(
+      api['handleCommand']!('{"id":"f2","type":"expandNode","payload":{"uid":"STEP-1"}}'),
+    );
+    expect(reply).toEqual({ ok: false, error: '"STEP-1" is a step, not a sequence', id: 'f2' });
+    const events = JSON.parse(api['pollEventsFlat']!()) as Array<Record<string, string>>;
+    expect(events.map((e) => e['type'])).toEqual(['commandError']);
+  });
+
+  test('enqueue carries an origin when given one, and none otherwise', () => {
+    const { api, bridge } = installed();
+    const { seen } = sink(api);
+    bridge.enqueue('nodeCollapsed', { uid: 'SEQ-1' }, 'host');
+    bridge.enqueue('nodeExpanded', { uid: 'SEQ-1' }, 'user');
+    bridge.enqueue('fileLoaded', { fileName: 'a.xml' });
+    expect(seen.map((e) => [e.type, e.origin])).toEqual([
+      ['nodeCollapsed', 'host'],
+      ['nodeExpanded', 'user'],
+      ['fileLoaded', undefined],
+    ]);
+    expect('origin' in seen[2]!).toBe(false);
+  });
+});
+
 describe('stepSelected origin', () => {
   test('a canvas click is "user"', () => {
     const { api, bridge } = installed();

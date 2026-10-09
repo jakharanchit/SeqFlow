@@ -111,6 +111,12 @@ export interface BridgeHandlers {
   selectStep(uid: string): void;
   setView(view: ViewMode): void;
   setZoomMode(mode: ZoomMode): void;
+  /** Throw on an unknown uid or a step that is not a sequence; a node already
+   * in the requested state is a no-op. `expandNode` also opens its ancestors. */
+  expandNode(uid: string): void;
+  collapseNode(uid: string): void;
+  expandAll(): void;
+  collapseAll(): void;
   exportMermaid(): string;
   exportSvg(): string;
   exportPng(options: ExportOptions): Promise<PngResult>;
@@ -214,7 +220,7 @@ export interface InstalledBridge {
    * `stepSelected` is handled specially, and only here: it is tagged with an
    * `origin` and dropped when the selection did not actually change — see
    * `selectionEvent`. Every caller sends it the same way regardless. */
-  enqueue(type: string, payload?: unknown): void;
+  enqueue(type: string, payload?: unknown, origin?: EventOrigin): void;
   /** Removes `window.SeqFlowBridge`. */
   dispose(): void;
 }
@@ -266,6 +272,18 @@ function dispatch(
       handlers.setZoomMode(p.mode);
       return null;
     }
+    case 'expandNode':
+      handlers.expandNode(asSelectStepPayload(command.payload).uid);
+      return null;
+    case 'collapseNode':
+      handlers.collapseNode(asSelectStepPayload(command.payload).uid);
+      return null;
+    case 'expandAll':
+      handlers.expandAll();
+      return null;
+    case 'collapseAll':
+      handlers.collapseAll();
+      return null;
     case 'exportMermaid':
       return handlers.exportMermaid();
     case 'exportSvg':
@@ -534,9 +552,9 @@ export function installBridge(handlers: BridgeHandlers): InstalledBridge {
   ready = true;
 
   return {
-    enqueue: (type, payload) => {
+    enqueue: (type, payload, origin) => {
       if (type === 'stepSelected') selectionEvent(payload);
-      else emit(type, payload);
+      else emit(type, payload, origin);
     },
     dispose: () => {
       sink = null;

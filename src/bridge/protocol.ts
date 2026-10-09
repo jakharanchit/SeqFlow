@@ -64,6 +64,10 @@ export type CommandType =
   | 'exportPdf'
   | 'setView'
   | 'setZoomMode'
+  | 'expandNode'
+  | 'collapseNode'
+  | 'expandAll'
+  | 'collapseAll'
   | 'getState';
 
 const COMMAND_TYPES: ReadonlySet<string> = new Set<CommandType>([
@@ -78,6 +82,10 @@ const COMMAND_TYPES: ReadonlySet<string> = new Set<CommandType>([
   'exportPdf',
   'setView',
   'setZoomMode',
+  'expandNode',
+  'collapseNode',
+  'expandAll',
+  'collapseAll',
   'getState',
 ]);
 
@@ -238,8 +246,8 @@ export function asExportPayload(payload: unknown): ExportOptions {
 /**
  * Which side caused an event the app is reporting back.
  *
- * Only `stepSelected` carries it today, and only because selection is the one
- * piece of state both ends write: LabVIEW sends `selectStep`, the app reports
+ * `stepSelected`, `nodeExpanded` and `nodeCollapsed` carry it, because
+ * selection and folding are the state both ends write: LabVIEW sends `selectStep`, the app reports
  * `stepSelected`, and a LabVIEW side that reacts to the report by selecting
  * again has built a loop. `origin: "host"` is the app saying "this is your own
  * command coming back" — ignorable — where `"user"` is an operator clicking
@@ -253,7 +261,7 @@ export interface BridgeEvent {
   /** `Date.now()` at the time it was queued — an ordering aid for LabVIEW,
    * never a key; nothing here reads it back. */
   at: number;
-  /** Present on `stepSelected` and nothing else. A missing key unflattens
+  /** Present on `stepSelected`, `nodeExpanded` and `nodeCollapsed` only. A missing key unflattens
    * into an empty string against LabVIEW's cluster, which is exactly what
    * "this event has no origin" should look like there. */
   origin?: EventOrigin;

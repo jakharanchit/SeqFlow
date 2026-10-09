@@ -117,7 +117,8 @@ Notes that matter on the LabVIEW side:
   `{"ok":true,"result":null,"id":null}`, and the next poll carries
   `loadError` with
   `bad.xml: document element <nope> contains no steps — is this a test sequence? …`.
-  Everything else — `selectStep`, `setView`, `setZoomMode`, `clearRuleFile` — is
+  Everything else — `selectStep`, `setView`, `setZoomMode`, the four fold
+  commands, `clearRuleFile` — is
   genuinely done when the envelope comes back.
 - **`id` is echoed even when parsing failed**, best-effort: a command whose
   `type` is unknown still has its `id` read back out of the raw text, so a
@@ -129,7 +130,7 @@ Notes that matter on the LabVIEW side:
 ### 1.2 `getState`'s result
 
 `handleCommandSync('{"type":"getState"}')` → `result` is an object with
-exactly these six keys (`bridgeGetState` in `App.tsx`):
+exactly these seven keys (`bridgeGetState` in `App.tsx`):
 
 | Key | JS type | Null? | Notes |
 |---|---|---|---|
@@ -139,11 +140,12 @@ exactly these six keys (`bridgeGetState` in `App.tsx`):
 | `selected` | object | **yes** | `null` when nothing is selected — the `stepSelected` payload, below |
 | `view` | string | no | `"tree"`, `"canvas"` or `"both"` |
 | `zoomMode` | string | no | `"fit"`, `"top"`, `"centre"` or `"keep"` — see §4 |
+| `collapsed` | string[] | no | uids of every folded sequence, sorted. `[]` when nothing is folded — resync from this after attaching |
 
 A full reply, nothing loaded:
 
 ```json
-{"ok":true,"result":{"fileName":null,"nodeCount":0,"warnings":0,"selected":null,"view":"both","zoomMode":"fit"},"id":null}
+{"ok":true,"result":{"fileName":null,"nodeCount":0,"warnings":0,"selected":null,"view":"both","zoomMode":"fit","collapsed":[]},"id":null}
 ```
 
 ## 2. Getting events out
@@ -196,7 +198,7 @@ in its array, as ASCII JSON:
 `payload` is itself an ASCII JSON **string** — double-encoded on purpose.
 Unflatten the outer message into `Bridge Event.ctl` = `{type, payload, at,
 origin}` to get `type`, then unflatten `payload` into that type's typedef. No
-Variants. `origin` is on `stepSelected` only.
+Variants. `origin` is on `stepSelected`, `nodeExpanded` and `nodeCollapsed` only.
 
 | | |
 |---|---|
@@ -214,19 +216,19 @@ gone.
 ### 2.1 `pollEventsFlat()` — the flat queue drain
 
 A JSON array of objects with three keys always present and a fourth on
-`stepSelected` only:
+`stepSelected`, `nodeExpanded` and `nodeCollapsed` only:
 
 | Key | JSON type | Always? | Notes |
 |---|---|---|---|
 | `type` | string | yes | see §3 |
 | `at` | number | yes | `Date.now()` when queued — milliseconds since the epoch, an I64 on the LabVIEW side. An ordering aid, never a key |
 | `payload` | **string** | yes | the payload, JSON-encoded a second time. `"null"` when the event has none |
-| `origin` | string | **`stepSelected` only** | `"user"` or `"host"` — see §3.1. Emitted last, after `payload` |
+| `origin` | string | **`stepSelected`, `nodeExpanded`, `nodeCollapsed` only** | `"user"` or `"host"` — see §3.1. Emitted last, after `payload` |
 
 Each element is exactly what §2.0 fires. Empty queue → `[]`.
 
-**`Origin` is why strict validation must stay FALSE.** It is absent on seven
-of the eight event types, and with strict validation off a missing element
+**`Origin` is why strict validation must stay FALSE.** It is absent on most
+event types, and with strict validation off a missing element
 simply keeps its default — an empty string, which is exactly what "this event
 has no origin" should look like. A cluster written before protocol 3 still
 unflattens unchanged; it just ignores the key.
@@ -357,7 +359,7 @@ known crash, so check the version before debugging anything else.
 
 ## 3. Every event
 
-Eleven types. Nine are pushed by the app; `bridgeReady` only ever comes from
+Thirteen types. Eleven are pushed by the app; `bridgeReady` only ever comes from
 `attachLabVIEW`, and `pollError` only from the poll methods.
 
 **Two of them fire once at start-up**, before LabVIEW has sent anything: a
@@ -384,8 +386,9 @@ matches cluster element names against these spellings.
 or the outline, *or* LabVIEW's own `selectStep` command. Also fires with a
 `null` payload when the selection is cleared.
 
-**Carries a top-level `origin`**, and it is the only event that does. This is
-the one piece of state both ends write, so it is the only one that can loop:
+**Carries a top-level `origin`**, as do `nodeExpanded` / `nodeCollapsed`
+(§3.11). Selection and folding are the state both ends write, so they are the
+ones that can loop:
 LabVIEW sends `selectStep`, the app reports `stepSelected`, LabVIEW reacts by
 selecting again.
 
@@ -610,6 +613,30 @@ vector, so zooming in brings the detail back.
 
 As `exportPngError` (§3.6): `{"id":...,"message":"..."}`.
 
+### 3.11 `nodeExpanded` / `nodeCollapsed`
+
+**Emitted** once per sequence whose fold state **changed**, whatever changed it:
+a twisty or double-click in the tree or canvas, the tree's Collapse all / Expand
+all, `selectStep` opening the parents of a hidden step, a dropped layout file,
+or the fold commands in §4. A bulk change sends one event per sequence —
+`collapseAll` on the fixture sends 25.
+
+**Not emitted** when a file loads or a rule file re-parses it: that replaces
+the whole fold state and `fileLoaded` already says so. Call `getState` and read
+`collapsed` if you need the starting set. A fold command that changes nothing
+(collapsing what is already collapsed) emits nothing.
+
+**`origin`** works as in §3.1: `"host"` for a change your own command caused —
+including the parents `selectStep` or `expandNode` opened — and `"user"` for an
+operator's.
+
+**Payload**: exactly the `stepSelected` payload (§3.1) for the sequence, never
+`null`. `kind` is always `container`.
+
+```json
+{"type":"nodeCollapsed","at":1791468033060,"payload":"{\"uid\":\"90000630-0000-0000-0000-000000004000\",\"name\":\"Cycle 1 - 4R\",\"stepNumber\":\"2.1\",\"numbered\":\"2.1 - Cycle 1 - 4R\",\"element\":\"Sequence\",\"kind\":\"container\",\"path\":\"XTR Module Test \\u203a Main\"}","origin":"host"}
+```
+
 ## 4. Commands, for completeness
 
 Unchanged in shape by protocol 3. `id` is optional on every one and is echoed
@@ -625,11 +652,27 @@ emits no `stepSelected`** — see §3.1.
 | `selectStep` | `{"uid":"..."}` | either |
 | `setView` | `{"view":"tree\|canvas\|both"}` | either |
 | `setZoomMode` | `{"mode":"fit\|top\|centre\|keep"}` | either |
+| `expandNode` | `{"uid":"..."}` | either |
+| `collapseNode` | `{"uid":"..."}` | either |
+| `expandAll` | — | either |
+| `collapseAll` | — | either |
 | `exportMermaid` | — | **`handleCommandSync`** — `result` is the `.mmd` text |
 | `exportSvg` | — | **`handleCommandSync`** — `result` is the SVG text |
 | `exportPng` | optional `{"view":"full\|viewport"}` (top-level `id`) | `handleCommand`; result arrives as an event |
 | `exportPdf` | optional `{"view":"full\|viewport"}` (top-level `id`) | `handleCommand`; result arrives as an event |
 | `getState` | — | **`handleCommandSync`** — `result` is §1.2's object |
+
+### `expandNode` / `collapseNode` / `expandAll` / `collapseAll`
+
+`uid` must name a **sequence** in the loaded file. A step, an unknown uid, or no
+file loaded is refused: `{"ok":false,"error":"..."}` plus a `commandError` event.
+
+- `expandNode` also opens every folded **parent**, so the sequence ends up
+  visible. Each one opened fires its own `nodeExpanded`.
+- `collapseAll` leaves the outermost sequence open, like the tree's button.
+- Asking for the state a node is already in is accepted and does nothing.
+
+Each change fires `nodeExpanded` / `nodeCollapsed` with `origin: "host"` (§3.11).
 
 ### `setZoomMode`
 

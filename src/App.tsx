@@ -62,6 +62,22 @@ interface Loaded {
 
 const NO_COLLAPSE: ReadonlySet<string> = new Set();
 
+/** Every sequence but the outermost — collapsing that one would hide the file. */
+function allFolded(graph: Graph): Set<string> {
+  return new Set(
+    [...graph.containers.keys()].filter((uid) => graph.nodes.get(uid)?.parent !== null),
+  );
+}
+
+/** The graph, if `uid` is a sequence in it — otherwise a thrown error the
+ * bridge reports as `{"ok":false}` plus `commandError`. */
+function foldable(graph: Graph | null, uid: string): Graph {
+  if (graph === null) throw new Error('no sequence is loaded');
+  if (!graph.nodes.has(uid)) throw new Error(`no step with uid ${JSON.stringify(uid)}`);
+  if (!graph.containers.has(uid)) throw new Error(`${JSON.stringify(uid)} is a step, not a sequence`);
+  return graph;
+}
+
 /**
  * Visible nodes a first layout is allowed to hand ELK.
  *
@@ -265,6 +281,12 @@ export function App(): React.JSX.Element {
   const warningsRef = useRef<Warning[]>([]);
   /** `reveal` closes over `graph`, so it is not stable — read through a ref. */
   const revealRef = useRef<(uid: string) => void>(() => {});
+  /** Written by the bridge's fold handlers too, so two commands in one tick
+   * each see the other's result rather than the last render's. */
+  const collapsedRef = useRef<ReadonlySet<string>>(NO_COLLAPSE);
+  /** Uids a bridge command is about to fold or unfold — their
+   * `nodeExpanded`/`nodeCollapsed` is tagged `origin: "host"`. */
+  const hostFold = useRef(new Set<string>());
   /** Set once the mount effect below has installed the bridge. */
   const bridgeRef = useRef<InstalledBridge | null>(null);
   /** `usePersistedState`'s setter is not stable across renders — the bridge's
@@ -577,12 +599,7 @@ export function App(): React.JSX.Element {
 
   const collapseAll = useCallback((): void => {
     if (graph === null) return;
-    // The outermost sequence stays open; collapsing it would hide the file.
-    setCollapsed(
-      new Set(
-        [...graph.containers.keys()].filter((uid) => graph.nodes.get(uid)?.parent !== null),
-      ),
-    );
+    setCollapsed(allFolded(graph));
   }, [graph]);
 
   const expandAll = useCallback((): void => setCollapsed(NO_COLLAPSE), []);
@@ -644,8 +661,58 @@ export function App(): React.JSX.Element {
   /** `selectStep` — reuses `reveal`, which already selects, expands whatever
    * collapsed sequence is hiding the step, and centres the viewport on it. */
   const bridgeSelectStep = useCallback((uid: string): void => {
+    const g = graphRef.current;
+    if (g !== null) {
+      for (const a of ancestorUids(g, uid)) {
+        if (collapsedRef.current.has(a)) hostFold.current.add(a);
+      }
+    }
     revealRef.current(uid);
   }, []);
+
+  /** Apply a fold the host asked for. Only the uids that actually change are
+   * tagged `host`, so a no-op leaves no stale tag for the next click. */
+  const hostSetCollapsed = useCallback((next: ReadonlySet<string>): void => {
+    const current = collapsedRef.current;
+    const changed = [
+      ...[...next].filter((uid) => !current.has(uid)),
+      ...[...current].filter((uid) => !next.has(uid)),
+    ];
+    if (changed.length === 0) return;
+    for (const uid of changed) hostFold.current.add(uid);
+    collapsedRef.current = next;
+    setCollapsed(next);
+  }, []);
+
+  const bridgeExpandNode = useCallback(
+    (uid: string): void => {
+      const g = foldable(graphRef.current, uid);
+      const next = new Set(collapsedRef.current);
+      next.delete(uid);
+      for (const a of ancestorUids(g, uid)) next.delete(a);
+      hostSetCollapsed(next);
+    },
+    [hostSetCollapsed],
+  );
+
+  const bridgeCollapseNode = useCallback(
+    (uid: string): void => {
+      foldable(graphRef.current, uid);
+      hostSetCollapsed(new Set(collapsedRef.current).add(uid));
+    },
+    [hostSetCollapsed],
+  );
+
+  const bridgeExpandAll = useCallback((): void => {
+    if (graphRef.current === null) throw new Error('no sequence is loaded');
+    hostSetCollapsed(NO_COLLAPSE);
+  }, [hostSetCollapsed]);
+
+  const bridgeCollapseAll = useCallback((): void => {
+    const g = graphRef.current;
+    if (g === null) throw new Error('no sequence is loaded');
+    hostSetCollapsed(allFolded(g));
+  }, [hostSetCollapsed]);
 
   const bridgeSetView = useCallback((mode: ViewMode): void => {
     // The ref is written now, not on the next render: a `getState` sent
@@ -754,6 +821,7 @@ export function App(): React.JSX.Element {
       selected: selectedDetail(graphRef.current, selectedRef.current),
       view: viewModeRef.current,
       zoomMode: zoomModeRef.current,
+      collapsed: [...collapsedRef.current].sort(),
     }),
     [],
   );
@@ -774,6 +842,10 @@ export function App(): React.JSX.Element {
       selectStep: bridgeSelectStep,
       setView: bridgeSetView,
       setZoomMode: bridgeSetZoomMode,
+      expandNode: bridgeExpandNode,
+      collapseNode: bridgeCollapseNode,
+      expandAll: bridgeExpandAll,
+      collapseAll: bridgeCollapseAll,
       exportMermaid: bridgeExportMermaid,
       exportSvg: bridgeExportSvg,
       exportPng: bridgeExportPng,
@@ -793,6 +865,10 @@ export function App(): React.JSX.Element {
     bridgeSelectStep,
     bridgeSetView,
     bridgeSetZoomMode,
+    bridgeExpandNode,
+    bridgeCollapseNode,
+    bridgeExpandAll,
+    bridgeCollapseAll,
     bridgeExportMermaid,
     bridgeExportSvg,
     bridgeExportPng,
@@ -805,6 +881,34 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     bridgeRef.current?.enqueue('stepSelected', selectedDetail(graphRef.current, selected));
   }, [selected]);
+
+  /**
+   * `nodeExpanded` / `nodeCollapsed`, one per sequence whose fold changed —
+   * whatever changed it: a click, Collapse/Expand all, `selectStep` opening a
+   * parent, a layout file, or a bridge command. A new graph only re-baselines:
+   * `fileLoaded` already says the whole picture changed.
+   */
+  const foldPrev = useRef<{ graph: Graph | null; collapsed: ReadonlySet<string> }>({
+    graph: null,
+    collapsed: NO_COLLAPSE,
+  });
+  useEffect(() => {
+    const prev = foldPrev.current;
+    foldPrev.current = { graph, collapsed };
+    if (graph === null || graph !== prev.graph) {
+      hostFold.current.clear();
+      return;
+    }
+    const report = (type: string, uid: string): void =>
+      bridgeRef.current?.enqueue(
+        type,
+        selectedDetail(graph, uid),
+        hostFold.current.has(uid) ? 'host' : 'user',
+      );
+    for (const uid of prev.collapsed) if (!collapsed.has(uid)) report('nodeExpanded', uid);
+    for (const uid of collapsed) if (!prev.collapsed.has(uid)) report('nodeCollapsed', uid);
+    hostFold.current.clear();
+  }, [graph, collapsed]);
 
   useEffect(() => {
     if (loaded === null) return;
@@ -872,6 +976,7 @@ export function App(): React.JSX.Element {
   renderEdgesRef.current = renderEdges;
   routesRef.current = routes;
   selectedRef.current = selected;
+  collapsedRef.current = collapsed;
   loadedRef.current = loaded;
   warningsRef.current = warnings;
 
