@@ -7,8 +7,6 @@
  */
 
 import {
-  Background,
-  BackgroundVariant,
   ControlButton,
   Controls,
   MiniMap,
@@ -492,7 +490,6 @@ export function Canvas({
         proOptions={{ hideAttribution: true }}
         defaultEdgeOptions={{ type: 'routed' }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#d8d8d8" />
         {/*
           * All five buttons are ours. React Flow's built-in zoom and fit
           * buttons carry their own inline SVGs, which are not reachable from
