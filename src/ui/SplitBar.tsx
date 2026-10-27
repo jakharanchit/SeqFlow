@@ -1,8 +1,8 @@
 /**
  * The seam between the two views: the resize handle.
  *
- * Which view is on screen is chosen only over the LabVIEW bridge (`setView`);
- * there is no on-screen control for it. App renders this only while both views
+ * Which view is on screen is chosen by `ViewSwitch` or the LabVIEW bridge
+ * (`setView`), not here. App renders this only while both views
  * show — in the single-view modes there is nothing on the other side to trade
  * width with, so there is no seam at all.
  */

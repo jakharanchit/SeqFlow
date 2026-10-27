@@ -44,6 +44,7 @@ import { svgToPdf } from './ui/pdf';
 import { Canvas, type FocusRequest, type ViewportRect } from './ui/Canvas';
 import { Icon } from './ui/Icon';
 import { SplitBar } from './ui/SplitBar';
+import { PaneClose, ViewSwitch } from './ui/ViewSwitch';
 import { Outline, type HideableColumn } from './ui/Outline';
 import { usePersistedState, useResizable } from './ui/useResizable';
 import './ui/styles.css';
@@ -1006,11 +1007,15 @@ export function App(): React.JSX.Element {
       )}
 
       <div className="workspace">
+        <ViewSwitch mode={viewMode} onChange={setViewMode} />
         <section
           className="left-panel"
           hidden={!showTree}
           style={viewMode === 'both' ? { flex: `0 0 ${outlinePanel.size}px` } : undefined}
         >
+          {viewMode === 'both' && (
+            <PaneClose title="Close tree" className="close-tree" onClose={() => setViewMode('canvas')} />
+          )}
           <div className="outline-section">
             {graph === null ? (
               <div className="empty">
@@ -1053,6 +1058,13 @@ export function App(): React.JSX.Element {
         )}
 
         <div className="canvas-wrap" hidden={!showCanvas}>
+          {viewMode === 'both' && (
+            <PaneClose
+              title="Close flowchart"
+              className="close-canvas"
+              onClose={() => setViewMode('tree')}
+            />
+          )}
           {graph !== null && (
             <ReactFlowProvider>
               <Canvas

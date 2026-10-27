@@ -444,8 +444,9 @@ Cleared:
 
 ### 3.2 `viewChanged`
 
-**Emitted** whenever the view mode changes, including on a bridge-driven
-`setView` and once at start-up with whatever mode was persisted.
+**Emitted** whenever the view mode changes: a bridge-driven `setView`, a
+click on a pane's close button or the reopen button, and once at
+start-up with whatever mode was persisted.
 
 | Key | JS type | Null? | Notes |
 |---|---|---|---|

@@ -70,6 +70,42 @@ body {
   flex: 1;
   display: flex;
   min-height: 0;
+  position: relative;
+}
+
+/*
+ * View controls (`ViewSwitch.tsx`). In `both` each pane carries a close
+ * button at its top-right; with one pane closed, a single reopen button sits
+ * at the workspace's top-right in the same spot.
+ */
+.view-switch,
+.pane-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 10;
+  width: 24px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.view-switch {
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+}
+
+.view-switch:hover,
+.pane-close:hover {
+  color: var(--text);
 }
 
 /*
@@ -89,6 +125,7 @@ body {
   flex-direction: column;
   min-height: 0;
   background: var(--bg-panel);
+  position: relative;
 }
 
 /* `display: flex` above beats the UA's `[hidden] { display: none }`, so the
@@ -112,8 +149,8 @@ body {
 }
 
 /*
- * The seam between the two views (`SplitBar.tsx`). The view mode is set only
- * over the bridge, and the seam is rendered only in `both`. `useResizable`
+ * The seam between the two views (`SplitBar.tsx`). The seam is rendered only
+ * in `both`. `useResizable`
  * (App.tsx) drives the drag.
  */
 .split-bar {
